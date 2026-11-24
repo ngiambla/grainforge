@@ -1,0 +1,24 @@
+{
+  "name": "grainforge",
+  "version": "0.1.0",
+  "description": "Turn photos of furniture into configurable woodworking plans, entirely in your browser.",
+  "license": "Apache-2.0 WITH LLVM-exception",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
+  }
+}
