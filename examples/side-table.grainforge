@@ -1,0 +1,93 @@
+{
+  "format": "grainforge",
+  "version": 1,
+  "meta": {
+    "name": "Simple side table",
+    "description": "Four legs, four aprons and a solid top. A good first project."
+  },
+  "units": "metric",
+  "parameters": [
+    { "id": "width", "label": "Width", "kind": "length", "value": 600, "min": 300, "max": 1500 },
+    { "id": "depth", "label": "Depth", "kind": "length", "value": 400, "min": 250, "max": 900 },
+    { "id": "height", "label": "Height", "kind": "length", "value": 550, "min": 300, "max": 900 },
+    { "id": "leg", "label": "Leg thickness", "kind": "length", "value": 45, "min": 30, "max": 90 },
+    { "id": "apron_w", "label": "Apron height", "kind": "length", "value": 80, "min": 50, "max": 150 },
+    { "id": "overhang", "label": "Top overhang", "kind": "length", "value": 20, "min": 0, "max": 80 }
+  ],
+  "materials": [
+    { "id": "board19", "name": "Pine board", "kind": "lumber", "species": "pine", "thickness": 19, "nominal": "1x" },
+    { "id": "leg_stock", "name": "Pine leg stock", "kind": "lumber", "species": "pine", "thickness": 45, "nominal": "2x2 (planed)" }
+  ],
+  "parts": [
+    {
+      "id": "top", "name": "Top", "material": "board19",
+      "length": "width", "width": "depth",
+      "position": { "x": 0, "y": 0, "z": "height - 19" },
+      "notes": "Glue up from narrower boards if needed."
+    },
+    {
+      "id": "leg_fl", "name": "Leg, front left", "material": "leg_stock",
+      "length": "height - 19", "width": "leg", "thickness": "leg",
+      "position": { "x": "overhang + leg", "y": "overhang", "z": 0 },
+      "rotation": { "x": 0, "y": -90, "z": 0 }
+    },
+    {
+      "id": "leg_fr", "name": "Leg, front right", "material": "leg_stock",
+      "length": "height - 19", "width": "leg", "thickness": "leg",
+      "position": { "x": "width - overhang", "y": "overhang", "z": 0 },
+      "rotation": { "x": 0, "y": -90, "z": 0 }
+    },
+    {
+      "id": "leg_bl", "name": "Leg, back left", "material": "leg_stock",
+      "length": "height - 19", "width": "leg", "thickness": "leg",
+      "position": { "x": "overhang + leg", "y": "depth - overhang - leg", "z": 0 },
+      "rotation": { "x": 0, "y": -90, "z": 0 }
+    },
+    {
+      "id": "leg_br", "name": "Leg, back right", "material": "leg_stock",
+      "length": "height - 19", "width": "leg", "thickness": "leg",
+      "position": { "x": "width - overhang", "y": "depth - overhang - leg", "z": 0 },
+      "rotation": { "x": 0, "y": -90, "z": 0 }
+    },
+    {
+      "id": "apron_front", "name": "Apron, front", "material": "board19",
+      "length": "width - 2 * overhang - 2 * leg", "width": "apron_w",
+      "position": { "x": "overhang + leg", "y": "overhang + 6 + 19", "z": "height - 19 - apron_w" },
+      "rotation": { "x": 90, "y": 0, "z": 0 },
+      "notes": "Length is shoulder to shoulder. Add tenon length if using mortise and tenon."
+    },
+    {
+      "id": "apron_back", "name": "Apron, back", "material": "board19",
+      "length": "width - 2 * overhang - 2 * leg", "width": "apron_w",
+      "position": { "x": "overhang + leg", "y": "depth - overhang - 6", "z": "height - 19 - apron_w" },
+      "rotation": { "x": 90, "y": 0, "z": 0 }
+    },
+    {
+      "id": "apron_left", "name": "Apron, left", "material": "board19",
+      "length": "depth - 2 * overhang - 2 * leg", "width": "apron_w",
+      "position": { "x": "overhang + 6", "y": "overhang + leg", "z": "height - 19 - apron_w" },
+      "rotation": { "x": 90, "y": 0, "z": 90 }
+    },
+    {
+      "id": "apron_right", "name": "Apron, right", "material": "board19",
+      "length": "depth - 2 * overhang - 2 * leg", "width": "apron_w",
+      "position": { "x": "width - overhang - 6 - 19", "y": "overhang + leg", "z": "height - 19 - apron_w" },
+      "rotation": { "x": 90, "y": 0, "z": 90 }
+    }
+  ],
+  "joints": [
+    { "id": "j_fl_front", "type": "mortise-and-tenon", "parts": ["leg_fl", "apron_front"], "alternatives": ["dowel", "pocket-screw"] },
+    { "id": "j_fr_front", "type": "mortise-and-tenon", "parts": ["leg_fr", "apron_front"], "alternatives": ["dowel", "pocket-screw"] },
+    { "id": "j_bl_back", "type": "mortise-and-tenon", "parts": ["leg_bl", "apron_back"], "alternatives": ["dowel", "pocket-screw"] },
+    { "id": "j_br_back", "type": "mortise-and-tenon", "parts": ["leg_br", "apron_back"], "alternatives": ["dowel", "pocket-screw"] },
+    { "id": "j_fl_left", "type": "mortise-and-tenon", "parts": ["leg_fl", "apron_left"], "alternatives": ["dowel", "pocket-screw"] },
+    { "id": "j_bl_left", "type": "mortise-and-tenon", "parts": ["leg_bl", "apron_left"], "alternatives": ["dowel", "pocket-screw"] },
+    { "id": "j_fr_right", "type": "mortise-and-tenon", "parts": ["leg_fr", "apron_right"], "alternatives": ["dowel", "pocket-screw"] },
+    { "id": "j_br_right", "type": "mortise-and-tenon", "parts": ["leg_br", "apron_right"], "alternatives": ["dowel", "pocket-screw"] },
+    {
+      "id": "j_top", "type": "butt-screwed", "parts": ["top", "apron_front", "apron_back", "apron_left", "apron_right"],
+      "notes": "Use tabletop fasteners or elongated holes so the top can move with the seasons."
+    }
+  ],
+  "workshop": { "skill": "intermediate", "tools": [] }
+}
