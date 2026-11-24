@@ -37,7 +37,7 @@ describe('project files', () => {
   it('fills in defaults for a minimal file', () => {
     const p = loadProject(JSON.stringify({ format: 'grainforge', version: 1, meta: { name: 'x' } }));
     expect(p.units).toBe('metric');
-    expect(p.workshop).toEqual({ skill: 'beginner', tools: [] });
+    expect(p.workshop).toEqual({ skill: 'beginner' });
     expect(emptyProject('x')).toEqual(p);
   });
 

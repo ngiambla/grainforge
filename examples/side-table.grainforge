@@ -15,8 +15,8 @@
     { "id": "overhang", "label": "Top overhang", "kind": "length", "value": 20, "min": 0, "max": 80 }
   ],
   "materials": [
-    { "id": "board19", "name": "Pine board", "kind": "lumber", "species": "pine", "thickness": 19, "nominal": "1x" },
-    { "id": "leg_stock", "name": "Pine leg stock", "kind": "lumber", "species": "pine", "thickness": 45, "nominal": "2x2 (planed)" }
+    { "id": "board19", "name": "Pine board", "kind": "lumber", "species": "pine", "thickness": 19, "nominal": "1x6", "stock": { "width": 140, "lengths": [1800, 2400, 3000] } },
+    { "id": "leg_stock", "name": "Pine leg stock", "kind": "lumber", "species": "pine", "thickness": 45, "nominal": "2x2 (planed)", "stock": { "width": 45, "lengths": [1800, 2400] } }
   ],
   "parts": [
     {
@@ -89,5 +89,5 @@
       "notes": "Use tabletop fasteners or elongated holes so the top can move with the seasons."
     }
   ],
-  "workshop": { "skill": "intermediate", "tools": [] }
+  "workshop": { "skill": "intermediate" }
 }
