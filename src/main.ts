@@ -7,27 +7,52 @@ import {
   formatLength,
   loadProject,
   parseLength,
-  resolveParts,
   saveProject,
+  type JointType,
   type Project,
   type UnitSystem,
 } from './format';
+import { buildPlan, buildSteps, JOINTS, TOOLS, type Plan, type Skill } from './plan';
+import { boardSvg } from './ui/diagram';
+import { Preview3D } from './ui/preview3d';
 
 const AUTOSAVE_KEY = 'grainforge:autosave';
+const TAB_KEY = 'grainforge:tab';
 
-const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const els = {
-  errors: $<HTMLDivElement>('errors'),
+  errors: $('errors'),
+  warnings: $('warnings'),
   name: $<HTMLInputElement>('project-name'),
-  desc: $<HTMLParagraphElement>('project-desc'),
-  params: $<HTMLDivElement>('params'),
-  parts: $<HTMLTableElement>('parts').tBodies[0]!,
-  joints: $<HTMLUListElement>('joints'),
-  units: $<HTMLSelectElement>('units'),
+  desc: $('project-desc'),
+  params: $('params'),
+  skill: $('skill'),
+  limitTools: $<HTMLInputElement>('limit-tools'),
+  tools: $('tools'),
+  overall: $('overall'),
+  tabs: $('tabs'),
+  panel: $('panel'),
   file: $<HTMLInputElement>('file-input'),
 };
 
 let project: Project = restore() ?? loadProject(exampleText);
+let plan: Plan | null = null;
+let lastToolList: string[] = [];
+let tab = readTab();
+const viewer = new Preview3D($('viewer'));
+
+// ---------- helpers ----------
+
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> & { class?: string } = {}, ...children: (Node | string)[]) {
+  const e = document.createElement(tag);
+  const { class: cls, ...rest } = props;
+  if (cls) e.className = cls;
+  Object.assign(e, rest);
+  e.append(...children);
+  return e;
+}
+const units = () => project.units as UnitSystem;
+const fmt = (mm: number) => formatLength(mm, units());
 
 function restore(): Project | null {
   try {
@@ -37,147 +62,380 @@ function restore(): Project | null {
     return null;
   }
 }
-
-function autosave() {
+function readTab() {
   try {
-    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(project));
+    return localStorage.getItem(TAB_KEY) ?? 'cuts';
   } catch {
-    // Storage can be unavailable (private mode, quota); autosave is a convenience only.
+    return 'cuts';
   }
 }
-
+function persist() {
+  try {
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(project));
+    localStorage.setItem(TAB_KEY, tab);
+  } catch {
+    // Storage may be unavailable; autosave is only a convenience.
+  }
+}
 function showError(message: string | null) {
   els.errors.hidden = message === null;
   els.errors.textContent = message ?? '';
 }
 
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, cls?: string) {
-  const e = document.createElement(tag);
-  if (text !== undefined) e.textContent = text;
-  if (cls) e.className = cls;
-  return e;
-}
+// ---------- rendering ----------
 
-function render() {
-  const units = project.units as UnitSystem;
-  els.units.value = units;
+function renderAll() {
   els.name.value = project.meta.name;
   els.desc.textContent = project.meta.description;
+  for (const b of document.querySelectorAll<HTMLButtonElement>('[data-units]')) {
+    b.setAttribute('aria-checked', String(b.dataset.units === project.units));
+  }
+  renderParams();
+  renderWorkshop();
+  recompute();
+}
 
+function renderParams() {
+  if (!project.parameters.length) {
+    els.params.replaceChildren(el('p', { class: 'empty', textContent: 'No dimensions yet.' }));
+    return;
+  }
   els.params.replaceChildren(
     ...project.parameters.map((prm) => {
-      const label = el('label', prm.label);
-      const input = el('input');
-      input.value = prm.kind === 'length' ? formatLength(prm.value, units) : String(prm.value);
+      const id = `param-${prm.id}`;
+      const input = el('input', { id, inputMode: 'decimal', spellcheck: false });
+      input.value = prm.kind === 'length' ? fmt(prm.value) : String(prm.value);
       input.addEventListener('change', () => {
         try {
-          const v = prm.kind === 'length' ? parseLength(input.value, units) : Number(input.value);
+          const v = prm.kind === 'length' ? parseLength(input.value, units()) : Number(input.value);
           if (!Number.isFinite(v)) throw new Error(`Can't read "${input.value}"`);
-          if (prm.min !== undefined && v < prm.min) throw new Error(`${prm.label} must be at least ${formatLength(prm.min, units)}`);
-          if (prm.max !== undefined && v > prm.max) throw new Error(`${prm.label} must be at most ${formatLength(prm.max, units)}`);
+          if (prm.min !== undefined && v < prm.min) throw new Error(`${prm.label} must be at least ${fmt(prm.min)}.`);
+          if (prm.max !== undefined && v > prm.max) throw new Error(`${prm.label} must be at most ${fmt(prm.max)}.`);
           prm.value = v;
+          input.value = prm.kind === 'length' ? fmt(v) : String(v);
+          input.removeAttribute('aria-invalid');
           showError(null);
-          update();
+          recompute();
         } catch (e) {
           input.setAttribute('aria-invalid', 'true');
           showError((e as Error).message);
         }
       });
-      label.append(input);
-      return label;
-    }),
-  );
-
-  renderParts();
-
-  const partName = new Map(project.parts.map((p) => [p.id, p.name]));
-  els.joints.replaceChildren(
-    ...project.joints.map((j) => {
-      const names = j.parts.map((id) => partName.get(id) ?? id).join(' + ');
-      const alt = j.alternatives.length ? ` (or ${j.alternatives.join(', ')})` : '';
-      return el('li', `${j.type}: ${names}${alt}`);
+      return el('div', { class: 'param' }, el('label', { htmlFor: id, textContent: prm.label }), input);
     }),
   );
 }
 
-function renderParts() {
-  const units = project.units as UnitSystem;
-  const mats = new Map(project.materials.map((m) => [m.id, m]));
+function renderWorkshop() {
+  for (const b of els.skill.querySelectorAll<HTMLButtonElement>('button')) {
+    b.setAttribute('aria-checked', String(b.dataset.skill === project.workshop.skill));
+  }
+  const limited = project.workshop.tools !== undefined;
+  els.limitTools.checked = limited;
+  els.tools.hidden = !limited;
+  if (!limited) return;
+  const owned = new Set(project.workshop.tools);
+  const groups: [string, string[]][] = [
+    ['Measuring', ['measure']],
+    ['Saws', ['saw']],
+    ['Power tools', ['power']],
+    ['Hand tools', ['hand']],
+    ['Jigs and clamps', ['jig', 'clamp']],
+    ['Finishing', ['finish']],
+  ];
+  els.tools.replaceChildren(
+    ...groups.flatMap(([title, cats]) => [
+      el('h3', { textContent: title }),
+      el(
+        'div',
+        { class: 'tool-chips' },
+        ...TOOLS.filter((t) => cats.includes(t.category)).map((t) => {
+          const b = el('button', { type: 'button', class: 'tool-chip', textContent: t.name });
+          b.setAttribute('aria-pressed', String(owned.has(t.id)));
+          b.addEventListener('click', () => {
+            const tools = new Set(project.workshop.tools ?? []);
+            if (tools.has(t.id)) tools.delete(t.id);
+            else tools.add(t.id);
+            project.workshop.tools = TOOLS.map((x) => x.id).filter((id) => tools.has(id));
+            b.setAttribute('aria-pressed', String(tools.has(t.id)));
+            recompute();
+          });
+          return b;
+        }),
+      ),
+    ]),
+  );
+}
+
+function recompute() {
   try {
-    const rows = resolveParts(project).map((p) => {
-      const tr = el('tr');
-      tr.append(
-        el('td', p.name),
-        el('td', String(p.quantity), 'num'),
-        el('td', formatLength(p.length, units), 'num'),
-        el('td', formatLength(p.width, units), 'num'),
-        el('td', formatLength(p.thickness, units), 'num'),
-        el('td', mats.get(p.material)?.name ?? p.material),
-      );
-      return tr;
-    });
-    els.parts.replaceChildren(...rows);
+    plan = buildPlan(project);
   } catch (e) {
+    plan = null;
     showError((e as Error).message);
   }
+  if (plan) {
+    viewer.setParts(plan.parts, project.materials.map((m) => m.id));
+    const o = plan.overall;
+    els.overall.replaceChildren(
+      ...([['W', o.width], ['D', o.depth], ['H', o.height]] as const).map(([k, v]) =>
+        el('span', { class: 'chip' }, el('span', { textContent: k }), fmt(v)),
+      ),
+    );
+    els.warnings.hidden = plan.warnings.length === 0;
+    els.warnings.replaceChildren(el('ul', {}, ...plan.warnings.map((w) => el('li', { textContent: w }))));
+  }
+  renderTab();
+  persist();
 }
 
-function update() {
-  render();
-  autosave();
+function renderTab() {
+  for (const b of els.tabs.querySelectorAll<HTMLButtonElement>('[role=tab]')) {
+    b.setAttribute('aria-selected', String(b.dataset.tab === tab));
+  }
+  if (!plan) {
+    els.panel.replaceChildren();
+    return;
+  }
+  const p = plan;
+  const views: Record<string, () => Node> = {
+    cuts: () => cutListView(p),
+    shopping: () => shoppingView(p),
+    diagrams: () => diagramsView(p),
+    joints: () => jointsView(p),
+    toollist: () => toolsView(p),
+    steps: () => stepsView(p),
+  };
+  els.panel.replaceChildren((views[tab] ?? views.cuts!)());
 }
+
+const tableOf = (head: string[], rows: Node[]) =>
+  el('div', { class: 'table-wrap' }, el('table', {}, el('thead', {}, el('tr', {}, ...head.map((h) => el('th', { textContent: h })))), el('tbody', {}, ...rows)));
+
+function cutListView(p: Plan) {
+  if (!p.cutList.length) return el('p', { class: 'empty', textContent: 'No parts yet.' });
+  return tableOf(
+    ['Part', 'Qty', 'Finished L × W × T', 'Cut to', 'Material'],
+    p.cutList.map((r) =>
+      el(
+        'tr',
+        {},
+        el('td', {}, r.name, ...(r.notes.length ? [el('span', { class: 'sub', textContent: r.notes.join(' · ') })] : [])),
+        el('td', { class: 'num', textContent: String(r.quantity) }),
+        el('td', { class: 'num', textContent: `${fmt(r.length)} × ${fmt(r.width)} × ${fmt(r.thickness)}` }),
+        el('td', {
+          class: 'num',
+          textContent: `${fmt(r.cutLength)} × ${fmt(r.cutWidth)}${r.strips > 1 ? `  ×${r.strips} strips` : ''}${r.layers > 1 ? `  ×${r.layers} layers` : ''}`,
+        }),
+        el('td', { textContent: r.material.name }),
+      ),
+    ),
+  );
+}
+
+function shoppingView(p: Plan) {
+  if (!p.materials.length) return el('p', { class: 'empty', textContent: 'Nothing to buy yet.' });
+  return tableOf(
+    ['Material', 'Thickness', 'Buy', 'Yield'],
+    p.materials.map((m) =>
+      el(
+        'tr',
+        {},
+        el('td', {}, m.material.name, ...(m.material.nominal ? [el('span', { class: 'sub', textContent: m.material.nominal })] : [])),
+        el('td', { class: 'num', textContent: fmt(m.material.thickness) }),
+        el('td', { class: 'num' }, ...m.buy.map((b) => el('div', { textContent: `${b.count} × ${fmt(b.length)} × ${fmt(b.width)}` }))),
+        el('td', { class: 'num', textContent: `${Math.round(m.yield * 100)}%` }),
+      ),
+    ),
+  );
+}
+
+function diagramsView(p: Plan) {
+  const wrap = el('div');
+  const width = Math.max(320, els.panel.clientWidth - 8);
+  for (const m of p.materials) {
+    const maxLen = Math.max(...m.boards.map((b) => b.length));
+    const scale = width / maxLen;
+    wrap.append(
+      el(
+        'div',
+        { class: 'diagram-group' },
+        el('h3', { textContent: `${m.material.name} · ${fmt(m.material.thickness)}` }),
+        ...m.boards.map((b, i) =>
+          el(
+            'div',
+            { class: 'diagram-board' },
+            el('div', { class: 'caption', textContent: `Board ${i + 1}: ${fmt(b.length)} × ${fmt(b.width)}${b.oversize ? ' (larger than stock)' : ''}` }),
+            boardSvg(b, scale),
+          ),
+        ),
+      ),
+    );
+  }
+  return wrap;
+}
+
+const REASON: Record<string, string> = {
+  chosen: 'Your choice',
+  design: 'As designed',
+  skill: 'Easier for your skill level',
+  tools: 'Fits your tools',
+  fallback: 'Closest fit, see Tools',
+};
+
+function jointsView(p: Plan) {
+  const partName = new Map(p.parts.map((x) => [x.id, x.name]));
+  if (!p.joints.length) return el('p', { class: 'empty', textContent: 'No joints yet.' });
+  return tableOf(
+    ['Parts', 'Joint', 'Level', 'Why'],
+    p.joints.map((c) => {
+      const select = el('select', { ariaLabel: 'Joint type' });
+      const auto = el('option', { value: '', textContent: `Auto (${JOINTS[c.joint.chosen ? c.joint.type : c.type].label})` });
+      select.append(auto, ...c.options.map((t) => el('option', { value: t, textContent: `${JOINTS[t].label} · ${JOINTS[t].skill}` })));
+      select.value = c.joint.chosen ?? '';
+      select.addEventListener('change', () => {
+        const j = project.joints.find((x) => x.id === c.joint.id)!;
+        if (select.value) j.chosen = select.value as JointType;
+        else delete j.chosen;
+        recompute();
+      });
+      return el(
+        'tr',
+        {},
+        el('td', { textContent: c.joint.parts.map((id) => partName.get(id) ?? id).join(' + ') }),
+        el('td', {}, select),
+        el('td', {}, el('span', { class: `badge ${JOINTS[c.type].skill}`, textContent: JOINTS[c.type].skill })),
+        el('td', { class: 'sub-cell', textContent: REASON[c.reason] ?? '' }),
+      );
+    }),
+  );
+}
+
+function toolsView(p: Plan) {
+  const known = project.workshop.tools !== undefined;
+  return tableOf(
+    known ? ['Tool', 'Used for', ''] : ['Tool', 'Used for'],
+    p.tools.map((t) =>
+      el(
+        'tr',
+        {},
+        el('td', { textContent: t.name }),
+        el('td', { class: 'sub-cell', textContent: t.for.join(', ') }),
+        ...(known ? [el('td', {}, el('span', { class: `badge ${t.owned ? 'ok' : 'need'}`, textContent: t.owned ? 'Have it' : 'Need' }))] : []),
+      ),
+    ),
+  );
+}
+
+function stepsView(p: Plan) {
+  return el(
+    'ol',
+    { class: 'steps' },
+    ...buildSteps(p, fmt).map((s) => el('li', {}, el('h4', { textContent: s.title }), el('ul', {}, ...s.details.map((d) => el('li', { textContent: d }))))),
+  );
+}
+
+// ---------- actions ----------
 
 function open(text: string) {
   try {
     project = loadProject(text);
     showError(null);
-    update();
+    renderAll();
   } catch (e) {
     showError(e instanceof ProjectFormatError ? e.message : String(e));
   }
 }
 
-function save() {
-  const blob = new Blob([saveProject(project)], { type: 'application/json' });
-  const a = el('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = (project.meta.name.trim() || 'project').replace(/[^\w\- ]+/g, '').replace(/\s+/g, '-').toLowerCase() + FILE_EXTENSION;
+function fileName(ext: string) {
+  return (project.meta.name.trim() || 'project').replace(/[^\w\- ]+/g, '').replace(/\s+/g, '-').toLowerCase() + ext;
+}
+
+function download(blob: Blob, name: string) {
+  const a = el('a', { href: URL.createObjectURL(blob), download: name });
   a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 0);
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
 $('btn-new').addEventListener('click', () => {
   project = emptyProject();
   showError(null);
-  update();
+  renderAll();
 });
 $('btn-example').addEventListener('click', () => open(exampleText));
 $('btn-open').addEventListener('click', () => els.file.click());
-$('btn-save').addEventListener('click', save);
+$('btn-save').addEventListener('click', () => download(new Blob([saveProject(project)], { type: 'application/json' }), fileName(FILE_EXTENSION)));
+$('btn-frame').addEventListener('click', () => viewer.frame());
+$<HTMLButtonElement>('btn-pdf').addEventListener('click', async (e) => {
+  const btn = e.currentTarget as HTMLButtonElement;
+  if (!plan) return;
+  btn.disabled = true;
+  try {
+    const { exportPdf } = await import('./ui/pdf');
+    download(exportPdf(project, plan, viewer.snapshot()), fileName('.pdf'));
+  } catch (err) {
+    showError(`Couldn't make the PDF: ${(err as Error).message}`);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 els.file.addEventListener('change', async () => {
   const f = els.file.files?.[0];
   if (f) open(await f.text());
   els.file.value = '';
 });
-els.units.addEventListener('change', () => {
-  project.units = els.units.value as UnitSystem;
-  update();
+for (const b of document.querySelectorAll<HTMLButtonElement>('[data-units]')) {
+  b.addEventListener('click', () => {
+    project.units = b.dataset.units as UnitSystem;
+    renderAll();
+  });
+}
+for (const b of els.skill.querySelectorAll<HTMLButtonElement>('button')) {
+  b.addEventListener('click', () => {
+    project.workshop.skill = b.dataset.skill as Skill;
+    renderWorkshop();
+    recompute();
+  });
+}
+els.limitTools.addEventListener('change', () => {
+  if (els.limitTools.checked) project.workshop.tools = lastToolList;
+  else {
+    lastToolList = project.workshop.tools ?? [];
+    delete project.workshop.tools;
+  }
+  renderWorkshop();
+  recompute();
+});
+els.tabs.addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[role=tab]');
+  if (!b?.dataset.tab) return;
+  tab = b.dataset.tab;
+  renderTab();
+  persist();
 });
 els.name.addEventListener('change', () => {
   project.meta.name = els.name.value;
-  autosave();
+  persist();
 });
 
 window.addEventListener('dragover', (e) => {
   e.preventDefault();
   document.body.classList.add('dragging');
 });
-window.addEventListener('dragleave', () => document.body.classList.remove('dragging'));
+window.addEventListener('dragleave', (e) => {
+  if (e.relatedTarget === null) document.body.classList.remove('dragging');
+});
 window.addEventListener('drop', async (e) => {
   e.preventDefault();
   document.body.classList.remove('dragging');
   const f = e.dataTransfer?.files[0];
   if (f) open(await f.text());
 });
+let resizeTimer = 0;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = window.setTimeout(() => tab === 'diagrams' && renderTab(), 150);
+});
 
-render();
+renderAll();

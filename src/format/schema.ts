@@ -44,6 +44,16 @@ export const Material = z.object({
   thickness: z.number().positive(),
   /** Trade name, e.g. "2x4", "4/4", "3/4 in birch ply". */
   nominal: z.string().optional(),
+  /**
+   * What you can buy: board or sheet width and the lengths sold, in mm.
+   * Defaults depend on the kind (see src/plan/stock.ts).
+   */
+  stock: z
+    .object({
+      width: z.number().positive(),
+      lengths: z.array(z.number().positive()).min(1),
+    })
+    .optional(),
 });
 
 export const JointType = z.enum([
@@ -86,10 +96,15 @@ export const Part = z.object({
 export const Joint = z.object({
   id: Id,
   type: JointType,
-  /** The parts this joint connects, at least two. */
+  /**
+   * The parts this joint connects, at least two. The first part receives the
+   * joint (e.g. the leg holding the mortise); the others join into it.
+   */
   parts: z.array(Id).min(2),
   /** Other joint types that would work here, e.g. for a different skill level. */
   alternatives: z.array(JointType).default([]),
+  /** The joint the maker picked. When absent, GrainForge picks one for their skill and tools. */
+  chosen: JointType.optional(),
   notes: z.string().optional(),
 });
 
@@ -102,8 +117,11 @@ export const Photo = z.object({
 
 export const Workshop = z.object({
   skill: z.enum(['beginner', 'intermediate', 'advanced']).default('beginner'),
-  /** Tool ids, e.g. "table-saw", "drill", "pocket-hole-jig". */
-  tools: z.array(z.string()).default([]),
+  /**
+   * Tool ids the maker owns, e.g. "table-saw", "drill", "pocket-hole-jig".
+   * Absent means "not told yet": plans then assume any tool is available.
+   */
+  tools: z.array(z.string()).optional(),
 });
 
 export const Project = z.object({
@@ -122,7 +140,7 @@ export const Project = z.object({
   parts: z.array(Part).default([]),
   joints: z.array(Joint).default([]),
   photos: z.array(Photo).default([]),
-  workshop: Workshop.default({ skill: 'beginner', tools: [] }),
+  workshop: Workshop.default({ skill: 'beginner' }),
 });
 
 export type Dimension = z.infer<typeof Dimension>;

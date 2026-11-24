@@ -14,8 +14,8 @@ Nothing is uploaded. All processing, including photo analysis, runs locally.
 
 | Step | What                                                     | State       |
 |------|----------------------------------------------------------|-------------|
-| 1    | Project setup, `.grainforge` file format, load and save  | In progress |
-| 2    | Plan engine: resizing, cut list, lumber layout, joinery by skill level, your tools, 3D preview, PDF | Planned |
+| 1    | Project setup, `.grainforge` file format, load and save  | Done        |
+| 2    | Plan engine: resizing, cut list, lumber layout, joinery by skill level, your tools, 3D preview, PDF | Done |
 | 3    | Photos to model, using models that run in the browser    | Planned     |
 | 4    | Examples, guide, tests and public release                | Planned     |
 

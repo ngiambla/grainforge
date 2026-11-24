@@ -5,64 +5,93 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Turn photos of furniture into configurable woodworking plans, entirely in your browser." />
     <title>GrainForge</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪵</text></svg>" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23b4693a'/><path d='M8 10h16M8 16h16M8 22h10' stroke='white' stroke-width='3' stroke-linecap='round'/></svg>" />
   </head>
   <body>
-    <header class="bar">
-      <h1>GrainForge</h1>
-      <nav class="actions">
-        <button id="btn-new" type="button">New</button>
-        <button id="btn-open" type="button">Open…</button>
-        <button id="btn-example" type="button">Example</button>
-        <button id="btn-save" type="button" class="primary">Save</button>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><rect width="32" height="32" rx="8" /><path d="M8 10h16M8 16h16M8 22h10" /></svg>
+        </span>
+        <span class="brand-name">GrainForge</span>
+      </div>
+      <input id="project-name" class="project-name" aria-label="Project name" />
+      <div class="top-actions">
+        <div class="segmented" role="radiogroup" aria-label="Units">
+          <button type="button" role="radio" data-units="metric">mm</button>
+          <button type="button" role="radio" data-units="imperial">in</button>
+        </div>
+        <div class="menu-group">
+          <button id="btn-new" type="button" class="ghost">New</button>
+          <button id="btn-open" type="button" class="ghost">Open</button>
+          <button id="btn-example" type="button" class="ghost">Example</button>
+          <button id="btn-save" type="button" class="ghost">Save</button>
+        </div>
+        <button id="btn-pdf" type="button" class="primary">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10m0 0 4-4m-4 4-4-4M4 16h12" /></svg>
+          Export PDF
+        </button>
         <input id="file-input" type="file" accept=".grainforge,application/json" hidden />
-      </nav>
-      <label class="units">
-        Units
-        <select id="units">
-          <option value="metric">Metric (mm)</option>
-          <option value="imperial">Imperial (in)</option>
-        </select>
-      </label>
+      </div>
     </header>
 
-    <main>
-      <div id="errors" class="errors" role="alert" hidden></div>
+    <div class="layout">
+      <aside class="sidebar">
+        <section class="card">
+          <h2>Dimensions</h2>
+          <p class="hint">Every part follows when you change these.</p>
+          <div id="params" class="params"></div>
+        </section>
 
-      <section class="project-head">
-        <input id="project-name" class="project-name" aria-label="Project name" />
-        <p id="project-desc" class="muted"></p>
-      </section>
+        <section class="card">
+          <h2>Your workshop</h2>
+          <p class="hint">Joints and methods adapt to your skill and tools.</p>
+          <label class="field-label">Skill level</label>
+          <div class="segmented wide" id="skill" role="radiogroup" aria-label="Skill level">
+            <button type="button" role="radio" data-skill="beginner">Beginner</button>
+            <button type="button" role="radio" data-skill="intermediate">Intermediate</button>
+            <button type="button" role="radio" data-skill="advanced">Advanced</button>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="limit-tools" />
+            <span class="track"><span class="thumb"></span></span>
+            Only use tools I have
+          </label>
+          <div id="tools" class="tools" hidden></div>
+        </section>
+      </aside>
 
-      <section>
-        <h2>Dimensions</h2>
-        <p class="muted">Change a dimension and every part that depends on it updates.</p>
-        <div id="params" class="params"></div>
-      </section>
+      <main class="content">
+        <section class="card viewer-card">
+          <div id="viewer" class="viewer"></div>
+          <div class="viewer-overlay">
+            <div id="overall" class="chips"></div>
+            <button id="btn-frame" type="button" class="ghost small">Reset view</button>
+          </div>
+          <p id="project-desc" class="viewer-desc"></p>
+        </section>
 
-      <section>
-        <h2>Parts</h2>
-        <div class="table-wrap">
-          <table id="parts">
-            <thead>
-              <tr><th>Part</th><th>Qty</th><th>Length</th><th>Width</th><th>Thickness</th><th>Material</th></tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </section>
+        <div id="errors" class="callout danger" role="alert" hidden></div>
+        <div id="warnings" class="callout warn" hidden></div>
 
-      <section>
-        <h2>Joints</h2>
-        <ul id="joints" class="joints"></ul>
-      </section>
-    </main>
+        <section class="card">
+          <nav class="tabs" role="tablist" id="tabs">
+            <button role="tab" data-tab="cuts">Cut list</button>
+            <button role="tab" data-tab="shopping">Shopping list</button>
+            <button role="tab" data-tab="diagrams">Cutting diagrams</button>
+            <button role="tab" data-tab="joints">Joinery</button>
+            <button role="tab" data-tab="toollist">Tools</button>
+            <button role="tab" data-tab="steps">Build steps</button>
+          </nav>
+          <div id="panel" class="panel" role="tabpanel"></div>
+        </section>
 
-    <footer class="muted">
-      Everything runs in your browser. Nothing is uploaded.
-      Open source under Apache-2.0 with LLVM Exceptions.
-      Drop a <code>.grainforge</code> file anywhere on the page to open it.
-    </footer>
+        <footer class="footer">
+          Runs entirely in your browser. Nothing is uploaded. Open source under Apache-2.0 with LLVM Exceptions.
+          Drop a <code>.grainforge</code> file anywhere to open it.
+        </footer>
+      </main>
+    </div>
 
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -50,6 +50,11 @@ Parameter fields: `id` (letters, digits, `_`), `label`, `kind`
 `id`, `name`, `kind` (`lumber` for boards or `sheet` for plywood/MDF),
 `thickness` in mm, and optional `species` and `nominal` (trade name such as `2x4`).
 
+`stock` (optional) says what you can buy: `{ "width": 140, "lengths": [1800, 2400] }` in mm.
+Without it, lumber defaults to 140 mm wide boards 2400 mm long, and sheets to
+1220 × 2440 mm. The cutting layout uses these sizes, and parts wider than the
+stock are glued up from strips.
+
 ## Parts
 
 Each part is a rectangular board:
@@ -67,8 +72,21 @@ Each part is a rectangular board:
 `domino`, `rabbet`, `dado`, `groove`, `tongue-and-groove`, `half-lap`, `bridle`,
 `mortise-and-tenon`, `box-joint`, `dovetail`, `miter`, `splined-miter`.
 
-`parts` lists at least two part ids. `alternatives` lists other joint types that
-would work, so the plan can offer an easier or stronger option.
+`parts` lists at least two part ids. The **first part receives** the joint (it
+holds the mortise, dado or groove); the others join into it. Joints that need
+extra length on the joining parts, such as tenons, add it to the cut list.
+
+`alternatives` lists other joint types that would work, so the plan can offer an
+easier or stronger option. `chosen` (optional) is the type the maker picked.
+Without it, GrainForge keeps the designed joint if it suits the maker's skill
+and tools, and otherwise picks the strongest alternative that does.
+
+## Workshop
+
+`skill` is `beginner`, `intermediate` or `advanced`. `tools` (optional) lists the
+tool ids the maker owns (see `src/plan/tools.ts`). When `tools` is absent, plans
+assume any tool is available; when present, joints and methods are picked to
+match and missing tools are called out.
 
 ## Validation
 
