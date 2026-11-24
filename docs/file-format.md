@@ -25,7 +25,7 @@ display rounds to the nearest 1/16".
 | `materials`  | `Material[]`             | Stock the parts are cut from.                   |
 | `parts`      | `Part[]`                 | Every piece of wood.                            |
 | `joints`     | `Joint[]`                | How parts connect.                              |
-| `photos`     | `Photo[]`                | Reference photos, embedded as `data:` URLs.     |
+| `photos`     | `Photo[]`                | Reference photos (`id`, `view`, `src`), embedded as `data:` URLs. Saved at most 800 px on the long side. |
 | `workshop`   | `{ skill, tools }`       | The maker's skill level and the tools they own. |
 
 ## Parameters and expressions
