@@ -1,8 +1,7 @@
 // Starting models for common furniture, fitted from measurements. Each one is
 // an ordinary parametric project, so everything stays editable afterwards.
 
-import tableText from '../../examples/side-table.grainforge?raw';
-import { FORMAT_ID, FORMAT_VERSION, loadProject, Project, type Joint, type Part } from '../format';
+import { FORMAT_ID, FORMAT_VERSION, Project, type Joint, type Part } from '../format';
 import type { FurnitureKind } from './analysis';
 
 export interface FitInput {
@@ -12,6 +11,9 @@ export interface FitInput {
   depth: number;
   /** Table family. */
   leg?: number;
+  topThickness?: number;
+  /** False for a table whose legs join straight into the top. */
+  aprons?: boolean;
   apron?: number;
   overhang?: number;
   /** Case family. */
@@ -46,26 +48,91 @@ export function buildFromFit(fit: FitInput): Project {
 }
 
 function tableProject(fit: FitInput): Project {
-  const p = loadProject(tableText);
-  const set = (id: string, v: number) => {
-    const prm = p.parameters.find((x) => x.id === id)!;
-    if (prm.min !== undefined) prm.min = Math.min(prm.min, r(v));
-    if (prm.max !== undefined) prm.max = Math.max(prm.max, r(v));
-    prm.value = r(v);
-  };
   const smallest = Math.min(fit.width, fit.depth);
-  const leg = clamp(fit.leg ?? smallest * 0.08, 25, Math.max(25, smallest / 4));
-  set('width', fit.width);
-  set('depth', fit.depth);
-  set('height', fit.height);
-  set('leg', leg);
-  set('apron_w', clamp(fit.apron ?? fit.height * 0.15, 40, Math.max(40, fit.height / 3)));
-  set('overhang', clamp(fit.overhang ?? 20, 0, smallest / 4));
-  p.meta = {
-    name: `My ${KIND_LABEL[fit.kind].toLowerCase()}`,
-    description: `${KIND_LABEL[fit.kind]} with four legs, aprons and a solid top, fitted from your photos.`,
-  };
-  return p;
+  const top = r(clamp(fit.topThickness ?? 19, 15, 100));
+  const leg = r(clamp(fit.leg ?? smallest * 0.08, 25, Math.max(25, smallest * 0.15)));
+  // Leave at least 100 mm between the legs on the short side.
+  const overhang = r(clamp(fit.overhang ?? 20, 0, Math.max(0, (smallest - 2 * leg - 100) / 2)));
+  const aprons = fit.aprons !== false;
+  const apron = r(clamp(fit.apron ?? fit.height * 0.12, 40, Math.max(40, fit.height / 3)));
+  const legLen = `height - top_t`;
+  const vertical = { x: 0, y: -90, z: 0 };
+
+  const legs: [string, string, string | number, string | number][] = [
+    ['leg_fl', 'Leg, front left', 'overhang + leg', 'overhang'],
+    ['leg_fr', 'Leg, front right', 'width - overhang', 'overhang'],
+    ['leg_bl', 'Leg, back left', 'overhang + leg', 'depth - overhang - leg'],
+    ['leg_br', 'Leg, back right', 'width - overhang', 'depth - overhang - leg'],
+  ];
+  const parts: Part[] = [
+    {
+      id: 'top', name: 'Top', material: 'top_stock', quantity: 1, length: 'width', width: 'depth', thickness: 'top_t',
+      position: { x: 0, y: 0, z: 'height - top_t' }, rotation: { x: 0, y: 0, z: 0 },
+      notes: 'Glue up from narrower boards if needed.',
+    },
+    ...legs.map(([id, name, x, y]): Part => ({
+      id, name, material: 'leg_stock', quantity: 1, length: legLen, width: 'leg', thickness: 'leg',
+      position: { x, y, z: 0 }, rotation: vertical,
+    })),
+  ];
+  const joints: Joint[] = [];
+  if (aprons) {
+    const z = 'height - top_t - apron_w';
+    parts.push(
+      { id: 'apron_front', name: 'Apron, front', material: 'apron_stock', quantity: 1, length: 'width - 2 * overhang - 2 * leg', width: 'apron_w', position: { x: 'overhang + leg', y: 'overhang + 6 + 19', z }, rotation: { x: 90, y: 0, z: 0 } },
+      { id: 'apron_back', name: 'Apron, back', material: 'apron_stock', quantity: 1, length: 'width - 2 * overhang - 2 * leg', width: 'apron_w', position: { x: 'overhang + leg', y: 'depth - overhang - 6', z }, rotation: { x: 90, y: 0, z: 0 } },
+      { id: 'apron_left', name: 'Apron, left', material: 'apron_stock', quantity: 1, length: 'depth - 2 * overhang - 2 * leg', width: 'apron_w', position: { x: 'overhang + 6', y: 'overhang + leg', z }, rotation: { x: 90, y: 0, z: 90 } },
+      { id: 'apron_right', name: 'Apron, right', material: 'apron_stock', quantity: 1, length: 'depth - 2 * overhang - 2 * leg', width: 'apron_w', position: { x: 'width - overhang - 6 - 19', y: 'overhang + leg', z }, rotation: { x: 90, y: 0, z: 90 } },
+    );
+    const pairs: [string, string][] = [
+      ['leg_fl', 'apron_front'], ['leg_fr', 'apron_front'], ['leg_bl', 'apron_back'], ['leg_br', 'apron_back'],
+      ['leg_fl', 'apron_left'], ['leg_bl', 'apron_left'], ['leg_fr', 'apron_right'], ['leg_br', 'apron_right'],
+    ];
+    for (const [l, a] of pairs) {
+      joints.push({ id: `j_${l}_${a}`, type: 'mortise-and-tenon', parts: [l, a], alternatives: ['domino', 'dowel', 'pocket-screw'] });
+    }
+    joints.push({
+      id: 'j_top', type: 'butt-screwed', parts: ['top', 'apron_front', 'apron_back', 'apron_left', 'apron_right'], alternatives: [],
+      notes: 'Use tabletop fasteners or elongated holes so the top can move with the seasons.',
+    });
+  } else {
+    for (const [id] of legs) {
+      joints.push({
+        id: `j_top_${id}`, type: 'mortise-and-tenon', parts: ['top', id], alternatives: ['domino', 'dowel', 'butt-screwed'],
+        notes: 'With no aprons, the legs carry all the racking load: use a deep joint, or hanger bolts into threaded inserts with a mounting plate.',
+      });
+    }
+  }
+
+  const kind = KIND_LABEL[fit.kind].toLowerCase();
+  return Project.parse({
+    format: FORMAT_ID,
+    version: FORMAT_VERSION,
+    meta: {
+      name: `My ${kind}`,
+      description: aprons
+        ? `${KIND_LABEL[fit.kind]} with four legs, aprons and a solid top, fitted from your photos.`
+        : `${KIND_LABEL[fit.kind]} with four legs joined straight into a ${top} mm solid top, fitted from your photos.`,
+    },
+    units: 'metric',
+    parameters: [
+      { id: 'width', label: 'Width', kind: 'length', value: r(fit.width), min: 200, max: Math.max(3600, r(fit.width)) },
+      { id: 'depth', label: 'Depth', kind: 'length', value: r(fit.depth), min: 200, max: Math.max(1500, r(fit.depth)) },
+      { id: 'height', label: 'Height', kind: 'length', value: r(fit.height), min: 150, max: Math.max(1200, r(fit.height)) },
+      { id: 'top_t', label: 'Top thickness', kind: 'length', value: top, min: 12, max: 120 },
+      { id: 'leg', label: 'Leg thickness', kind: 'length', value: leg, min: 20, max: 200 },
+      ...(aprons ? [{ id: 'apron_w', label: 'Apron height', kind: 'length' as const, value: apron, min: 30, max: 300 }] : []),
+      { id: 'overhang', label: 'Top overhang', kind: 'length', value: overhang, min: 0, max: Math.max(400, overhang) },
+    ],
+    materials: [
+      { id: 'top_stock', name: 'Top boards', kind: 'lumber', species: 'hardwood', thickness: top, stock: { width: 140, lengths: [1800, 2400, 3000] } },
+      { id: 'leg_stock', name: 'Leg stock', kind: 'lumber', species: 'hardwood', thickness: leg, stock: { width: leg, lengths: [1800, 2400] } },
+      ...(aprons ? [{ id: 'apron_stock', name: 'Apron boards', kind: 'lumber' as const, species: 'hardwood', thickness: 19, stock: { width: 140, lengths: [1800, 2400, 3000] } }] : []),
+    ],
+    parts,
+    joints,
+    workshop: { skill: 'intermediate' },
+  });
 }
 
 function caseProject(fit: FitInput): Project {

@@ -1,12 +1,14 @@
-// Combine labelled views into real-world sizes, using one known measurement
-// for scale. Front/back views show width and height, left/right show depth
-// and height, and top shows width and depth.
+// Combine labelled views into real-world sizes, using known measurements for
+// scale. Front/back views show width and height, left/right show depth and
+// height, and top shows width and depth. An angled (three-quarter) view gives
+// all three, less precisely, so it only fills in what the straight views don't.
 
 import type { Photo } from '../format';
 import type { Silhouette } from './analysis';
 
 export type View = Photo['view'];
 export type Dim = 'width' | 'height' | 'depth';
+export const DIMS: Dim[] = ['width', 'depth', 'height'];
 
 export interface ViewInput {
   id: string;
@@ -26,9 +28,11 @@ export interface Fused {
   depth?: number;
   /** mm per pixel for each photo that could be scaled. */
   scale: Record<string, number>;
+  /** Dimensions that came from an angled view only, so are approximate. */
+  approximate: Dim[];
 }
 
-/** Which real dimension a view's horizontal and vertical extents show. */
+/** Which real dimension a straight view's horizontal and vertical extents show. */
 export function axesOf(view: View): { h: Dim; v: Dim } | null {
   switch (view) {
     case 'front':
@@ -40,52 +44,68 @@ export function axesOf(view: View): { h: Dim; v: Dim } | null {
     case 'top':
       return { h: 'width', v: 'depth' };
     default:
-      return null; // angled views are not used for measurement
+      return null;
   }
 }
 
-export function fuseViews(views: ViewInput[], known: KnownMeasure): Fused {
-  const ref = views.find((v) => v.id === known.photoId);
-  if (!ref) throw new Error('The photo with the known measurement is missing.');
-  const axes = axesOf(ref.view);
-  if (!axes || (axes.h !== known.dim && axes.v !== known.dim)) {
-    throw new Error(`A ${ref.view} photo doesn't show the ${known.dim}. Pick a photo that does.`);
+/** The dimensions a view can measure. */
+export function dimsOf(v: { view: View; silhouette?: Silhouette | null }): Dim[] {
+  const a = axesOf(v.view);
+  if (a) return [a.h, a.v];
+  return v.view === 'angled' && (!v.silhouette || v.silhouette.angled) ? [...DIMS] : [];
+}
+
+/** Pixel length of a dimension in a view, if the view shows it. */
+export function pxOf(v: ViewInput, d: Dim): number | undefined {
+  const a = axesOf(v.view);
+  if (a) return a.h === d ? v.silhouette.box.width : a.v === d ? v.silhouette.box.height : undefined;
+  const g = v.silhouette.angled;
+  if (v.view !== 'angled' || !g) return undefined;
+  return d === 'width' ? g.long : d === 'depth' ? g.short : g.height;
+}
+
+export function fuseViews(views: ViewInput[], knowns: KnownMeasure | KnownMeasure[]): Fused {
+  const list = Array.isArray(knowns) ? knowns : [knowns];
+  if (!list.length) throw new Error('Enter at least one real measurement.');
+  for (const k of list) {
+    const v = views.find((x) => x.id === k.photoId);
+    if (!v) throw new Error('The photo with the measurement is missing.');
+    if (pxOf(v, k.dim) === undefined) throw new Error(`A ${v.view} photo doesn't show the ${k.dim}. Pick a photo that does.`);
   }
-  const px = (v: ViewInput, d: Dim) => {
-    const a = axesOf(v.view)!;
-    return a.h === d ? v.silhouette.box.width : v.silhouette.box.height;
-  };
+  const known = new Map<Dim, number>(list.map((k) => [k.dim, k.mm]));
 
-  const scale: Record<string, number> = { [ref.id]: known.mm / px(ref, known.dim) };
-  const estimates: Record<Dim, number[]> = { width: [], height: [], depth: [] };
-  const seen = new Set<string>();
-  const measured = (d: Dim) => {
-    const e = estimates[d];
-    return e.length ? e.reduce((a, b) => a + b, 0) / e.length : undefined;
-  };
+  const scale: Record<string, number> = {};
+  const straight: Record<Dim, number[]> = { width: [], height: [], depth: [] };
+  const angled: Record<Dim, number[]> = { width: [], height: [], depth: [] };
+  const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : undefined);
+  const value = (d: Dim) => known.get(d) ?? avg(straight[d]) ?? avg(angled[d]);
 
-  // Spread the scale from photo to photo through the dimensions they share.
-  for (let changed = true; changed; ) {
-    changed = false;
-    for (const v of views) {
-      const a = axesOf(v.view);
-      if (!a) continue;
-      if (scale[v.id] === undefined) {
-        const shared = [a.h, a.v].find((d) => measured(d) !== undefined);
-        if (shared === undefined) continue;
-        scale[v.id] = measured(shared)! / px(v, shared);
-        changed = true;
-      }
-      for (const d of [a.h, a.v]) {
-        const key = `${v.id}:${d}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          estimates[d].push(px(v, d) * scale[v.id]!);
-          changed = true;
+  // Seed scales from the known measurements themselves.
+  for (const k of list) {
+    const v = views.find((x) => x.id === k.photoId)!;
+    scale[v.id] ??= k.mm / pxOf(v, k.dim)!;
+  }
+  // Straight views first, then angled ones, spreading scale through shared dimensions.
+  for (const pass of ['straight', 'angled'] as const) {
+    const group = views.filter((v) => (axesOf(v.view) ? pass === 'straight' : pass === 'angled' && v.silhouette.angled));
+    const done = new Set<string>();
+    for (let changed = true; changed; ) {
+      changed = false;
+      for (const v of group) {
+        if (done.has(v.id)) continue;
+        const dims = DIMS.filter((d) => pxOf(v, d) !== undefined);
+        if (scale[v.id] === undefined) {
+          const shared = dims.find((d) => value(d) !== undefined);
+          if (shared === undefined) continue;
+          scale[v.id] = value(shared)! / pxOf(v, shared)!;
         }
+        for (const d of dims) (pass === 'straight' ? straight : angled)[d].push(pxOf(v, d)! * scale[v.id]!);
+        done.add(v.id);
+        changed = true;
       }
     }
   }
 
-  return { width: measured('width'), height: measured('height'), depth: measured('depth'), scale };
+  const approximate = DIMS.filter((d) => !known.has(d) && !straight[d].length && angled[d].length > 0);
+  return { width: value('width'), height: value('height'), depth: value('depth'), scale, approximate };
 }

@@ -3,9 +3,9 @@
 
 import type { Photo, Project } from '../format';
 import { formatLength, parseLength, type UnitSystem } from '../format';
-import { analyzeMask, suggestKinds, type FurnitureKind, type Mask, type Silhouette } from '../vision/analysis';
+import { analyzeMask, looksAngled, suggestKinds, type FurnitureKind, type Mask, type Silhouette } from '../vision/analysis';
 import { fitFromPhotos } from '../vision/fit';
-import { axesOf, type Dim, type View } from '../vision/fuse';
+import { dimsOf, type Dim, type KnownMeasure, type View } from '../vision/fuse';
 import { boxMask, WorkerSegmenter, type Point, type Segmenter } from '../vision/segmenter';
 import { buildFromFit, KIND_LABEL } from '../vision/templates';
 import { ThresholdSegmenter } from '../vision/threshold';
@@ -27,6 +27,8 @@ interface PhotoState {
   embedded: Promise<void> | null;
   canvas: HTMLCanvasElement;
   status: HTMLElement;
+  viewSel: HTMLSelectElement;
+  viewTouched: boolean;
 }
 
 const VIEWS: [View, string][] = [
@@ -89,10 +91,48 @@ export function openPhotoWizard(units: UnitSystem, onCreate: (p: Project) => voi
   );
   drop.addEventListener('click', () => fileInput.click());
 
-  // Measurement and kind.
-  const dimSel = el('select', { ariaLabel: 'Known dimension' });
-  const valueInput = el('input', { placeholder: units === 'imperial' ? 'e.g. 36"' : 'e.g. 900 mm', inputMode: 'decimal', class: 'measure-input', ariaLabel: 'Measurement' });
-  const photoSel = el('select', { ariaLabel: 'Photo with the measurement' });
+  // Measurements: one or more "I know the <dim> is <value> in <photo>" rows.
+  interface MeasureRow { dimSel: HTMLSelectElement; valueInput: HTMLInputElement; photoSel: HTMLSelectElement; row: HTMLElement }
+  const measureRows: MeasureRow[] = [];
+  const measureList = el('div', { class: 'measure-list' });
+  const addMeasureBtn = el('button', { type: 'button', class: 'ghost small', textContent: '+ Add another measurement' });
+  const addMeasure = () => {
+    const dimSel = el('select', { ariaLabel: 'Known dimension' });
+    const valueInput = el('input', { placeholder: units === 'imperial' ? 'e.g. 36"' : 'e.g. 900 mm', inputMode: 'decimal', class: 'measure-input', ariaLabel: 'Measurement' });
+    const photoSel = el('select', { ariaLabel: 'Photo with the measurement' });
+    const first = measureRows.length === 0;
+    const removeBtn = el('button', { type: 'button', class: 'ghost small', textContent: 'Remove', ariaLabel: 'Remove this measurement' });
+    const row = el(
+      'div',
+      { class: 'form-row' },
+      el('span', { textContent: first ? 'I know the' : 'And the' }),
+      dimSel,
+      el('span', { textContent: 'is' }),
+      valueInput,
+      el('span', { textContent: 'in' }),
+      photoSel,
+      ...(first ? [] : [removeBtn]),
+    );
+    const m = { dimSel, valueInput, photoSel, row };
+    removeBtn.addEventListener('click', () => {
+      measureRows.splice(measureRows.indexOf(m), 1);
+      row.remove();
+    });
+    photoSel.addEventListener('change', () => refreshForm());
+    measureRows.push(m);
+    measureList.append(row);
+    refreshForm();
+    if (!first) {
+      // Suggest a dimension not measured yet.
+      const used = new Set(measureRows.slice(0, -1).map((r) => r.dimSel.value));
+      const free = [...dimSel.options].find((o) => !used.has(o.value));
+      if (free) dimSel.value = free.value;
+    }
+  };
+  addMeasureBtn.addEventListener('click', addMeasure);
+  const apronsSel = el('select', { ariaLabel: 'Aprons' });
+  apronsSel.append(el('option', { value: 'auto', textContent: 'auto' }), el('option', { value: 'yes', textContent: 'yes' }), el('option', { value: 'no', textContent: 'no' }));
+  const tableOpts = el('span', { class: 'case-opts' }, el('label', {}, 'Aprons under the top ', apronsSel));
   const kindSel = el('select', { ariaLabel: 'Kind of furniture' });
   for (const k of Object.keys(KIND_LABEL) as FurnitureKind[]) kindSel.append(el('option', { value: k, textContent: KIND_LABEL[k] }));
   let kindTouched = false;
@@ -106,6 +146,7 @@ export function openPhotoWizard(units: UnitSystem, onCreate: (p: Project) => voi
   const syncKind = () => {
     const k = kindSel.value as FurnitureKind;
     caseOpts.hidden = !(k === 'bookcase' || k === 'cabinet');
+    tableOpts.hidden = !caseOpts.hidden;
   };
 
   const errorBox = el('p', { class: 'wizard-error', role: 'alert', hidden: true });
@@ -129,33 +170,34 @@ export function openPhotoWizard(units: UnitSystem, onCreate: (p: Project) => voi
     el(
       'div',
       { class: 'wizard-form' },
-      el('div', { class: 'form-row' }, el('span', { textContent: 'I know the' }), dimSel, el('span', { textContent: 'is' }), valueInput, el('span', { textContent: 'in' }), photoSel),
-      el('div', { class: 'form-row' }, el('span', { textContent: "It's a" }), kindSel, caseOpts),
+      measureList,
+      el('div', {}, addMeasureBtn),
+      el('div', { class: 'form-row' }, el('span', { textContent: "It's a" }), kindSel, caseOpts, tableOpts),
       errorBox,
     ),
     el('div', { class: 'wizard-actions' }, el('span', { class: 'hint', textContent: 'This replaces the current project. Save it first if you want to keep it.' }), cancelBtn, createBtn),
   );
 
-  const refreshForm = () => {
-    const prevPhoto = photoSel.value;
-    const prevDim = dimSel.value;
-    photoSel.replaceChildren(
-      ...photos
-        .filter((p) => axesOf(p.view))
-        .map((p) => el('option', { value: p.id, textContent: `photo ${photos.indexOf(p) + 1} (${VIEWS.find((v) => v[0] === p.view)![1].toLowerCase()})` })),
-    );
-    if ([...photoSel.options].some((o) => o.value === prevPhoto)) photoSel.value = prevPhoto;
-    const sel = photos.find((p) => p.id === photoSel.value);
-    const axes = sel ? axesOf(sel.view) : null;
-    const dims: Dim[] = axes ? [axes.h, axes.v] : ['width', 'height', 'depth'];
-    dimSel.replaceChildren(...dims.map((d) => el('option', { value: d, textContent: d })));
-    if (dims.includes(prevDim as Dim)) dimSel.value = prevDim;
-    // Suggest a kind from the first outlined front view.
-    const front = photos.find((p) => (p.view === 'front' || p.view === 'back') && p.silhouette);
-    if (front && !kindTouched) kindSel.value = suggestKinds(front.silhouette!)[0]!;
+  function refreshForm() {
+    const usable = photos.filter((p) => dimsOf(p).length);
+    for (const m of measureRows) {
+      const prevPhoto = m.photoSel.value;
+      const prevDim = m.dimSel.value;
+      m.photoSel.replaceChildren(
+        ...usable.map((p) => el('option', { value: p.id, textContent: `photo ${photos.indexOf(p) + 1} (${VIEWS.find((v) => v[0] === p.view)![1].toLowerCase()})` })),
+      );
+      if ([...m.photoSel.options].some((o) => o.value === prevPhoto)) m.photoSel.value = prevPhoto;
+      const sel = photos.find((p) => p.id === m.photoSel.value);
+      const dims: Dim[] = sel ? dimsOf(sel) : ['width', 'depth', 'height'];
+      m.dimSel.replaceChildren(...dims.map((d) => el('option', { value: d, textContent: d })));
+      if (dims.includes(prevDim as Dim)) m.dimSel.value = prevDim;
+    }
+    // Suggest a kind from the first outlined view, preferring straight-on ones.
+    const best =
+      photos.find((p) => (p.view === 'front' || p.view === 'back') && p.silhouette) ?? photos.find((p) => p.silhouette);
+    if (best && !kindTouched) kindSel.value = suggestKinds(best.silhouette!)[0]!;
     syncKind();
-  };
-  photoSel.addEventListener('change', refreshForm);
+  }
 
   function draw(p: PhotoState) {
     const c = p.canvas;
@@ -212,6 +254,11 @@ export function openPhotoWizard(units: UnitSystem, onCreate: (p: Project) => voi
   function setMask(p: PhotoState, mask: Mask | null) {
     p.mask = mask;
     p.silhouette = mask ? analyzeMask(mask) : null;
+    if (p.silhouette && !p.viewTouched && p.view !== 'angled' && p.mode === 'click' && looksAngled(p.silhouette)) {
+      p.view = 'angled';
+      p.viewSel.value = 'angled';
+      setStatus('That photo looks like an angled view, so it is labelled "Angled". Change it if that is wrong.');
+    }
     draw(p);
     describe(p);
     refreshForm();
@@ -262,7 +309,7 @@ export function openPhotoWizard(units: UnitSystem, onCreate: (p: Project) => voi
         el('div', { class: 'photo-tools' }, modeBtn, clearBtn, removeBtn),
       );
       grid.append(card);
-      const p: PhotoState = { id, view, ...prep, points: [], mask: null, silhouette: null, mode: modelFailed ? 'box' : 'click', embedded: null, canvas, status };
+      const p: PhotoState = { id, view, ...prep, points: [], mask: null, silhouette: null, mode: modelFailed ? 'box' : 'click', embedded: null, canvas, status, viewSel, viewTouched: false };
       photos.push(p);
       draw(p);
       if (modelFailed) useBoxMode(p);
@@ -276,6 +323,7 @@ export function openPhotoWizard(units: UnitSystem, onCreate: (p: Project) => voi
 
       viewSel.addEventListener('change', () => {
         p.view = viewSel.value as View;
+        p.viewTouched = true;
         refreshForm();
       });
       modeBtn.addEventListener('click', () => {
@@ -356,26 +404,35 @@ export function openPhotoWizard(units: UnitSystem, onCreate: (p: Project) => voi
     errorBox.hidden = true;
     const ready = photos.filter((p) => p.silhouette);
     if (!ready.length) return fail('Outline the piece in at least one photo.');
-    const ref = photos.find((p) => p.id === photoSel.value);
-    if (!ref?.silhouette) return fail('Outline the piece in the photo with your measurement.');
-    let mm: number;
-    try {
-      mm = parseLength(valueInput.value, units);
-      if (!(mm > 0)) throw new Error();
-    } catch {
-      return fail(`Enter the ${dimSel.value} as a length, like ${units === 'imperial' ? '36"' : '900 mm'}.`);
+    const knowns: KnownMeasure[] = [];
+    for (const m of measureRows) {
+      if (!m.valueInput.value.trim() && knowns.length) continue; // extra rows may be left empty
+      const ref = photos.find((p) => p.id === m.photoSel.value);
+      if (!ref?.silhouette) return fail('Outline the piece in each photo you give a measurement for.');
+      let mm: number;
+      try {
+        mm = parseLength(m.valueInput.value, units);
+        if (!(mm > 0)) throw new Error();
+      } catch {
+        return fail(`Enter the ${m.dimSel.value} as a length, like ${units === 'imperial' ? '36"' : '900 mm'}.`);
+      }
+      knowns.push({ photoId: ref.id, dim: m.dimSel.value as Dim, mm });
     }
     try {
       const kind = kindSel.value as FurnitureKind;
       const num = (i: HTMLInputElement) => (i.value === '' ? undefined : Number(i.value));
-      const { fit, guessed } = fitFromPhotos(
+      const aprons = apronsSel.value === 'auto' ? undefined : apronsSel.value === 'yes';
+      const { fit, guessed, approximate } = fitFromPhotos(
         ready.map((p) => ({ id: p.id, view: p.view, silhouette: p.silhouette! })),
-        { photoId: ref.id, dim: dimSel.value as Dim, mm },
+        knowns,
         kind,
-        { shelves: num(shelvesInput), doors: num(doorsInput) },
+        { shelves: num(shelvesInput), doors: num(doorsInput), aprons },
       );
       const project = buildFromFit(fit);
       project.units = units;
+      if (approximate.length) {
+        project.meta.description += ` The ${approximate.join(' and ')} came from an angled photo, so ${approximate.length > 1 ? 'they are' : 'it is'} approximate: check ${approximate.map((d) => `${d} ${formatLength(fit[d], units)}`).join(', ')}, or add a measurement for ${approximate.length > 1 ? 'them' : 'it'}.`;
+      }
       if (guessed.length) {
         project.meta.description += ` The ${guessed.join(' and ')} ${guessed.length > 1 ? 'were' : 'was'} estimated (no photo showed ${guessed.length > 1 ? 'them' : 'it'}), so check ${guessed.length > 1 ? 'them' : 'it'}: ${guessed.map((d) => `${d} ${formatLength(fit[d], units)}`).join(', ')}.`;
       }
@@ -396,5 +453,5 @@ export function openPhotoWizard(units: UnitSystem, onCreate: (p: Project) => voi
 
   document.body.append(dialog);
   dialog.showModal();
-  refreshForm();
+  addMeasure();
 }

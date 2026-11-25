@@ -23,9 +23,13 @@ export class ThresholdSegmenter implements Segmenter {
     const px = (i: number) => [data[i * 4]!, data[i * 4 + 1]!, data[i * 4 + 2]!];
     const corners = [0, w - 1, (h - 1) * w, h * w - 1].map(px);
     const bg = [0, 1, 2].map((c) => corners.reduce((s, k) => s + k[c]!, 0) / 4);
+    const sat = (p: number[]) => Math.max(...p) - Math.min(...p);
+    const bgSat = sat(bg);
     const isFg = (i: number) => {
       const p = px(i);
-      return Math.abs(p[0]! - bg[0]!) + Math.abs(p[1]! - bg[1]!) + Math.abs(p[2]! - bg[2]!) > 60;
+      const diff = Math.abs(p[0]! - bg[0]!) + Math.abs(p[1]! - bg[1]!) + Math.abs(p[2]! - bg[2]!);
+      // Shadows are darker but about as grey as the background: ignore them.
+      return diff > 60 && sat(p) - bgSat > 18;
     };
     const out = new Uint8Array(w * h);
     for (const p of points.filter((q) => q.positive)) {
