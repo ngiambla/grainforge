@@ -41,7 +41,7 @@
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10m0 0 4-4m-4 4-4-4M4 16h12" /></svg>
           Export PDF
         </button>
-        <input id="file-input" type="file" accept=".grainforge,application/json" hidden />
+        <input id="file-input" type="file" accept=".grainforge,.gftools,application/json" hidden />
       </div>
     </header>
 
@@ -68,6 +68,12 @@
             Only use tools I have
           </label>
           <div id="tools" class="tools" hidden></div>
+          <div class="workshop-file">
+            <button id="btn-tools-save" type="button" class="small">Save tools file</button>
+            <button id="btn-tools-open" type="button" class="small">Load tools file</button>
+            <input id="tools-input" type="file" accept=".gftools,application/json" hidden />
+          </div>
+          <p class="hint workshop-note">Your skill and tools are remembered here and used for every new project. Save them as a <code>.gftools</code> file to reuse on another computer or share.</p>
         </section>
       </aside>
 
@@ -110,7 +116,7 @@
         <ol class="steps">
           <li><h4>Start from photos, an example, or a file</h4><ul><li>Click <strong>From photos</strong>, add a few pictures of the piece (front, side and top work best), click the piece in each to outline it, and enter one real measurement. You can also open an example or a <code>.grainforge</code> file.</li></ul></li>
           <li><h4>Check the model</h4><ul><li>Rotate the 3D view to compare it with your photos. Fix any dimension in the sidebar; every part follows.</li></ul></li>
-          <li><h4>Tell it about your workshop</h4><ul><li>Pick your skill level, and switch on <strong>Only use tools I have</strong> to choose your tools. Joints change to ones you can make, and anything you're missing is listed.</li></ul></li>
+          <li><h4>Tell it about your workshop</h4><ul><li>Pick your skill level, and switch on <strong>Only use tools I have</strong> to choose your tools. The cut list then changes to suit: which saw makes each cut, boards bought at width if you can't rip, stock bought at thickness if you can't plane, ready-glued panels if you have no clamps. Joints change to ones you can make, and anything you're missing is listed.</li><li><strong>Save tools file</strong> keeps your skill and tools in a <code>.gftools</code> file you can load into any project or send to a friend. They're also remembered in this browser for new projects.</li></ul></li>
           <li><h4>Review the plan</h4><ul><li>The tabs show the cut list, what to buy, how to lay out the cuts, each joint (you can change any of them), the tools and the build steps.</li></ul></li>
           <li><h4>Export and save</h4><ul><li><strong>Export PDF</strong> gives you a printable plan. <strong>Save</strong> downloads a <code>.grainforge</code> file you can reopen or share.</li></ul></li>
         </ol>

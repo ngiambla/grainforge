@@ -3,7 +3,7 @@
 import { jsPDF } from 'jspdf';
 import { autoTable } from 'jspdf-autotable';
 import { formatLength, type Project, type UnitSystem } from '../format';
-import { buildSteps, JOINTS, type Plan } from '../plan';
+import { buildSteps, JOINTS, methodName, type Plan } from '../plan';
 
 const REASON: Record<string, string> = {
   chosen: 'Your choice',
@@ -82,6 +82,10 @@ export function exportPdf(project: Project, plan: Plan, image: string | null): B
     heading('Check before you start');
     for (const w of plan.warnings) para(`• ${w}`);
   }
+  if (plan.adaptations.length) {
+    heading('Adjusted for your tools');
+    for (const a of plan.adaptations) para(`• ${a}`);
+  }
 
   heading('Shopping list');
   table(
@@ -105,13 +109,14 @@ export function exportPdf(project: Project, plan: Plan, image: string | null): B
 
   heading('Cut list');
   table(
-    ['Part', 'Qty', 'Finished (L × W × T)', 'Cut to (L × W)', 'Material', 'Notes'],
+    ['Part', 'Qty', 'Finished (L × W × T)', 'Cut to (L × W)', 'Cut with', 'Material', 'Notes'],
     plan.cutList.map((r) => [
       r.name,
       r.quantity,
       `${fmt(r.length)} × ${fmt(r.width)} × ${fmt(r.thickness)}`,
       `${fmt(r.cutLength)} × ${fmt(r.cutWidth)}${r.strips > 1 ? ` (×${r.strips})` : ''}${r.layers > 1 ? ` (${r.layers} layers)` : ''}`,
-      r.material.name,
+      [r.rip && `Rip: ${methodName(r.rip)}`, methodName(r.crosscut)].filter(Boolean).join('\n'),
+      r.buyAs.name,
       r.notes.join('; '),
     ]),
   );
