@@ -1,0 +1,392 @@
+{
+  "format": "grainforge",
+  "version": 1,
+  "meta": {
+    "name": "Plywood bookcase",
+    "description": "Plywood bookcase with four dadoed shelves and a rabbeted back."
+  },
+  "units": "metric",
+  "parameters": [
+    {
+      "id": "width",
+      "label": "Width",
+      "kind": "length",
+      "value": 800,
+      "min": 200,
+      "max": 2400
+    },
+    {
+      "id": "depth",
+      "label": "Depth",
+      "kind": "length",
+      "value": 300,
+      "min": 150,
+      "max": 1200
+    },
+    {
+      "id": "height",
+      "label": "Height",
+      "kind": "length",
+      "value": 1800,
+      "min": 200,
+      "max": 2400
+    }
+  ],
+  "materials": [
+    {
+      "id": "ply19",
+      "name": "Plywood",
+      "kind": "sheet",
+      "species": "birch",
+      "thickness": 19,
+      "nominal": "3/4\" plywood"
+    },
+    {
+      "id": "ply6",
+      "name": "Thin plywood",
+      "kind": "sheet",
+      "thickness": 6,
+      "nominal": "1/4\" plywood"
+    }
+  ],
+  "parts": [
+    {
+      "id": "side_left",
+      "name": "Side, left",
+      "material": "ply19",
+      "quantity": 1,
+      "length": "height",
+      "width": "depth",
+      "position": {
+        "x": 19,
+        "y": 0,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": -90,
+        "z": 0
+      }
+    },
+    {
+      "id": "side_right",
+      "name": "Side, right",
+      "material": "ply19",
+      "quantity": 1,
+      "length": "height",
+      "width": "depth",
+      "position": {
+        "x": "width",
+        "y": 0,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": -90,
+        "z": 0
+      }
+    },
+    {
+      "id": "top",
+      "name": "Top",
+      "material": "ply19",
+      "quantity": 1,
+      "length": "width - 38",
+      "width": "depth - 6",
+      "position": {
+        "x": 19,
+        "y": 0,
+        "z": "height - 19"
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    {
+      "id": "bottom",
+      "name": "Bottom",
+      "material": "ply19",
+      "quantity": 1,
+      "length": "width - 38",
+      "width": "depth - 6",
+      "position": {
+        "x": 19,
+        "y": 0,
+        "z": 0
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    {
+      "id": "back",
+      "name": "Back panel",
+      "material": "ply6",
+      "quantity": 1,
+      "length": "width - 20",
+      "width": "height",
+      "position": {
+        "x": 10,
+        "y": "depth",
+        "z": 0
+      },
+      "rotation": {
+        "x": 90,
+        "y": 0,
+        "z": 0
+      },
+      "notes": "Sits in 10 mm rabbets in the back edges of the sides."
+    },
+    {
+      "id": "shelf_1",
+      "name": "Shelf 1",
+      "material": "ply19",
+      "quantity": 1,
+      "length": "width - 38",
+      "width": "depth - 6",
+      "position": {
+        "x": 19,
+        "y": 0,
+        "z": "19 + 1 * ((height - 38 - 76) / 5) + 0"
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    {
+      "id": "shelf_2",
+      "name": "Shelf 2",
+      "material": "ply19",
+      "quantity": 1,
+      "length": "width - 38",
+      "width": "depth - 6",
+      "position": {
+        "x": 19,
+        "y": 0,
+        "z": "19 + 2 * ((height - 38 - 76) / 5) + 19"
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    {
+      "id": "shelf_3",
+      "name": "Shelf 3",
+      "material": "ply19",
+      "quantity": 1,
+      "length": "width - 38",
+      "width": "depth - 6",
+      "position": {
+        "x": 19,
+        "y": 0,
+        "z": "19 + 3 * ((height - 38 - 76) / 5) + 38"
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    {
+      "id": "shelf_4",
+      "name": "Shelf 4",
+      "material": "ply19",
+      "quantity": 1,
+      "length": "width - 38",
+      "width": "depth - 6",
+      "position": {
+        "x": 19,
+        "y": 0,
+        "z": "19 + 4 * ((height - 38 - 76) / 5) + 57"
+      },
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    }
+  ],
+  "joints": [
+    {
+      "id": "j_side_left_top",
+      "type": "rabbet",
+      "parts": [
+        "side_left",
+        "top"
+      ],
+      "alternatives": [
+        "dado",
+        "pocket-screw",
+        "butt-screwed"
+      ]
+    },
+    {
+      "id": "j_side_left_bottom",
+      "type": "dado",
+      "parts": [
+        "side_left",
+        "bottom"
+      ],
+      "alternatives": [
+        "rabbet",
+        "pocket-screw",
+        "butt-screwed"
+      ]
+    },
+    {
+      "id": "j_side_left_shelf_1",
+      "type": "dado",
+      "parts": [
+        "side_left",
+        "shelf_1"
+      ],
+      "alternatives": [
+        "dowel",
+        "pocket-screw",
+        "butt-screwed"
+      ]
+    },
+    {
+      "id": "j_side_left_shelf_2",
+      "type": "dado",
+      "parts": [
+        "side_left",
+        "shelf_2"
+      ],
+      "alternatives": [
+        "dowel",
+        "pocket-screw",
+        "butt-screwed"
+      ]
+    },
+    {
+      "id": "j_side_left_shelf_3",
+      "type": "dado",
+      "parts": [
+        "side_left",
+        "shelf_3"
+      ],
+      "alternatives": [
+        "dowel",
+        "pocket-screw",
+        "butt-screwed"
+      ]
+    },
+    {
+      "id": "j_side_left_shelf_4",
+      "type": "dado",
+      "parts": [
+        "side_left",
+        "shelf_4"
+      ],
+      "alternatives": [
+        "dowel",
+        "pocket-screw",
+        "butt-screwed"
+      ]
+    },
+    {
+      "id": "j_side_right_top",
+      "type": "rabbet",
+      "parts": [
+        "side_right",
+        "top"
+      ],
+      "alternatives": [
+        "dado",
+        "pocket-screw",
+        "butt-screwed"
+      ]
+    },
+    {
+      "id": "j_side_right_bottom",
+      "type": "dado",
+      "parts": [
+        "side_right",
+        "bottom"
+      ],
+      "alternatives": [
+        "rabbet",
+        "pocket-screw",
+        "butt-screwed"
+      ]
+    },
+    {
+      "id": "j_side_right_shelf_1",
+      "type": "dado",
+      "parts": [
+        "side_right",
+        "shelf_1"
+      ],
+      "alternatives": [
+        "dowel",
+        "pocket-screw",
+        "butt-screwed"
+      ]
+    },
+    {
+      "id": "j_side_right_shelf_2",
+      "type": "dado",
+      "parts": [
+        "side_right",
+        "shelf_2"
+      ],
+      "alternatives": [
+        "dowel",
+        "pocket-screw",
+        "butt-screwed"
+      ]
+    },
+    {
+      "id": "j_side_right_shelf_3",
+      "type": "dado",
+      "parts": [
+        "side_right",
+        "shelf_3"
+      ],
+      "alternatives": [
+        "dowel",
+        "pocket-screw",
+        "butt-screwed"
+      ]
+    },
+    {
+      "id": "j_side_right_shelf_4",
+      "type": "dado",
+      "parts": [
+        "side_right",
+        "shelf_4"
+      ],
+      "alternatives": [
+        "dowel",
+        "pocket-screw",
+        "butt-screwed"
+      ]
+    },
+    {
+      "id": "j_back",
+      "type": "rabbet",
+      "parts": [
+        "side_left",
+        "back",
+        "side_right"
+      ],
+      "alternatives": [
+        "butt-screwed"
+      ],
+      "notes": "Glue and pin or screw the back into the rabbets. It squares up the case."
+    }
+  ],
+  "photos": [],
+  "workshop": {
+    "skill": "intermediate"
+  }
+}

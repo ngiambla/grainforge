@@ -62,6 +62,7 @@ export function buildPlan(project: Project): Plan {
   const byId = new Map(parts.map((p) => [p.id, p]));
   const materials = new Map(project.materials.map((m) => [m.id, m]));
   const workshop = project.workshop;
+  const units = project.units;
   const owned = workshop.tools ? new Set(workshop.tools) : undefined;
   const warnings: string[] = [];
 
@@ -87,7 +88,7 @@ export function buildPlan(project: Project): Plan {
   const cutList: CutListRow[] = [];
   for (const p of parts) {
     const m = materials.get(p.material)!;
-    const stock = stockOf(m);
+    const stock = stockOf(m, units);
     const notes = [...(jointNotes.get(p.id) ?? [])];
     let cutLength = p.length + (extra.get(p.id) ?? 0);
     let cutWidth = p.width;
@@ -139,13 +140,20 @@ export function buildPlan(project: Project): Plan {
   for (const m of project.materials) {
     const rows = cutList.filter((r) => r.material.id === m.id);
     if (!rows.length) continue;
-    const stock = stockOf(m);
+    const stock = stockOf(m, units);
     const pieces: Piece[] = [];
     for (const r of rows) {
       const count = r.quantity * r.strips * r.layers;
       for (let i = 0; i < count; i++) {
         const suffix = count > 1 ? ` (${i + 1}/${count})` : '';
-        pieces.push({ key: `${r.partId}#${i}`, label: r.name + suffix, length: r.cutLength, width: r.cutWidth });
+        // On sheets, lay the long side of a piece along the sheet's length.
+        const turn = m.kind === 'sheet' && r.cutWidth > r.cutLength;
+        pieces.push({
+          key: `${r.partId}#${i}`,
+          label: r.name + suffix,
+          length: turn ? r.cutWidth : r.cutLength,
+          width: turn ? r.cutLength : r.cutWidth,
+        });
       }
     }
     const boards = packPieces(pieces, stock.width, stock.lengths);
@@ -173,7 +181,7 @@ export function buildPlan(project: Project): Plan {
 
   // Operations, then tools.
   const ops: Operation[] = [OPERATIONS.measure, OPERATIONS.crosscut];
-  if (cutList.some((r) => r.material.kind === 'lumber' && r.cutWidth < stockOf(r.material).width - 1)) ops.push(OPERATIONS.rip);
+  if (cutList.some((r) => r.material.kind === 'lumber' && r.cutWidth < stockOf(r.material, units).width - 1)) ops.push(OPERATIONS.rip);
   if (cutList.some((r) => r.material.kind === 'sheet')) ops.push(OPERATIONS.sheet);
   if (cutList.some((r) => r.planeTo || r.layers > 1)) ops.push(OPERATIONS.thickness);
   if (cutList.some((r) => r.strips > 1 || r.layers > 1) || joints.length) ops.push(OPERATIONS.glue);

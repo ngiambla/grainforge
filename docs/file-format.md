@@ -53,7 +53,9 @@ Parameter fields: `id` (letters, digits, `_`), `label`, `kind`
 `stock` (optional) says what you can buy: `{ "width": 140, "lengths": [1800, 2400] }` in mm.
 Without it, lumber defaults to 140 mm wide boards 2400 mm long, and sheets to
 1220 × 2440 mm. The cutting layout uses these sizes, and parts wider than the
-stock are glued up from strips.
+stock are glued up from strips. When the project's units are imperial, lengths
+follow what North American yards sell: boards in 6, 8, 10 and 12 ft, sheets
+48" × 96". On sheets, pieces are turned so their long side runs along the sheet.
 
 ## Parts
 

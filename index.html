@@ -22,8 +22,16 @@
         <div class="menu-group">
           <button id="btn-new" type="button" class="ghost">New</button>
           <button id="btn-open" type="button" class="ghost">Open</button>
-          <button id="btn-example" type="button" class="ghost">Example</button>
+          <div class="menu-wrap">
+            <button id="btn-example" type="button" class="ghost" aria-haspopup="menu" aria-expanded="false">Examples</button>
+            <div id="example-menu" class="menu" role="menu" hidden>
+              <button type="button" role="menuitem" data-example="side-table">Side table</button>
+              <button type="button" role="menuitem" data-example="bookcase">Bookcase</button>
+              <button type="button" role="menuitem" data-example="cabinet">Two-door cabinet</button>
+            </div>
+          </div>
           <button id="btn-save" type="button" class="ghost">Save</button>
+          <button id="btn-guide" type="button" class="ghost">Guide</button>
         </div>
         <button id="btn-photos" type="button" class="secondary">
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h2l1.2-1.6h4.6L13.5 5h2A1.5 1.5 0 0 1 17 6.5v8a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 14.5z" /><circle cx="10" cy="10.5" r="3" /></svg>
@@ -95,6 +103,21 @@
         </footer>
       </main>
     </div>
+
+    <dialog id="guide" class="guide">
+      <div class="guide-body">
+        <h2>How GrainForge works</h2>
+        <ol class="steps">
+          <li><h4>Start from photos, an example, or a file</h4><ul><li>Click <strong>From photos</strong>, add a few pictures of the piece (front, side and top work best), click the piece in each to outline it, and enter one real measurement. You can also open an example or a <code>.grainforge</code> file.</li></ul></li>
+          <li><h4>Check the model</h4><ul><li>Rotate the 3D view to compare it with your photos. Fix any dimension in the sidebar; every part follows.</li></ul></li>
+          <li><h4>Tell it about your workshop</h4><ul><li>Pick your skill level, and switch on <strong>Only use tools I have</strong> to choose your tools. Joints change to ones you can make, and anything you're missing is listed.</li></ul></li>
+          <li><h4>Review the plan</h4><ul><li>The tabs show the cut list, what to buy, how to lay out the cuts, each joint (you can change any of them), the tools and the build steps.</li></ul></li>
+          <li><h4>Export and save</h4><ul><li><strong>Export PDF</strong> gives you a printable plan. <strong>Save</strong> downloads a <code>.grainforge</code> file you can reopen or share.</li></ul></li>
+        </ol>
+        <p class="hint">Everything runs in your browser. Photos are never uploaded; the outline model downloads once (about 40 MB) and is cached. Always check measurements before you cut.</p>
+        <div class="wizard-actions"><button type="button" class="primary" id="guide-close">Got it</button></div>
+      </div>
+    </dialog>
 
     <script type="module" src="/src/main.ts"></script>
   </body>
