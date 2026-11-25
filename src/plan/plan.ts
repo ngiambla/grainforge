@@ -227,6 +227,8 @@ export function buildPlan(project: Project): Plan {
   if (cutList.some((r) => r.buyAs.kind === 'sheet')) ops.push(OPERATIONS.sheet);
   if (cutList.some((r) => r.planeTo || r.layers > 1)) ops.push(OPERATIONS.thickness);
   if (cutList.some((r) => r.strips > 1 || r.layers > 1) || joints.length) ops.push(OPERATIONS.glue);
+  if (parts.some((p) => p.shape)) ops.push(OPERATIONS.shape);
+  if (parts.some((p) => p.shape === 'carved')) ops.push(OPERATIONS.carve);
   ops.push(OPERATIONS.sand);
 
   const toolMap = new Map<string, Set<string>>();

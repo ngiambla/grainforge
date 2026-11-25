@@ -90,6 +90,12 @@ export const Part = z.object({
   position: Vec3.default({ x: 0, y: 0, z: 0 }),
   /** Rotation in degrees about the x, y and z axes, applied in that order. */
   rotation: Vec3.default({ x: 0, y: 0, z: 0 }),
+  /**
+   * Shaping after the part is cut square: "curved" outlines are sawn (band saw,
+   * jigsaw or coping saw); "carved" parts are also carved to a 3D form.
+   * Absent means the part stays rectangular.
+   */
+  shape: z.enum(['curved', 'carved']).optional(),
   notes: z.string().optional(),
 });
 

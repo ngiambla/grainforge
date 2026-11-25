@@ -301,3 +301,29 @@ dialog.guide::backdrop { background: rgba(20, 12, 6, 0.45); backdrop-filter: blu
 .guide-body .wizard-actions { padding: 14px 0 18px; margin-top: 10px; }
 .photo-strip[hidden] { display: none; }
 .measure-list { display: flex; flex-direction: column; gap: 8px; }
+
+/* ---------- photo test bench ---------- */
+.bench-title { font-weight: 600; color: var(--muted); }
+.ghost-link { color: var(--muted); text-decoration: none; font-size: 14px; }
+.ghost-link:hover { color: var(--text); }
+.bench-main { max-width: 1200px; margin: 0 auto; padding: 20px 16px 60px; display: flex; flex-direction: column; gap: 16px; }
+.bench-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.bench-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 16px; }
+.bench-summary:empty { display: none; }
+.bench-stat { background: var(--surface-2); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.bench-stat strong { font-size: 22px; }
+.bench-stat span { color: var(--muted); font-size: 12.5px; }
+.bench-case h3 { margin: 0 0 2px; }
+.bench-thumbs { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
+.bench-thumbs figure { margin: 0; }
+.bench-thumb { width: 200px; max-width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--border); display: block; }
+.bench-thumbs figcaption { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.bench-case td.good { color: #2f7d3b; }
+.bench-case td.fair { color: #a46a00; }
+.bench-case td.poor { color: #b3261e; }
+.bench-case td.given, .bench-case td.guessed { color: var(--muted); }
+@media (prefers-color-scheme: dark) {
+  .bench-case td.good { color: #7fcf8a; }
+  .bench-case td.fair { color: #e6b450; }
+  .bench-case td.poor { color: #f2867c; }
+}

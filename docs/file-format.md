@@ -67,6 +67,10 @@ Each part is a rectangular board:
 - `position` is the part's minimum corner in world space, before rotation.
 - `rotation` is in degrees about x, then y, then z, around that corner.
 - World axes: x is width (left to right), y is depth (front to back), z is height.
+- `shape` (optional) marks a part that isn't left rectangular: `"curved"` for a
+  sawn outline, `"carved"` for one also carved to a 3D form (a spoon, say). The
+  part's size is then the blank it's cut from, and the plan adds shaping steps
+  and tools.
 
 ## Joints
 

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <title>GrainForge photo test bench</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪵</text></svg>" />
+  </head>
+  <body class="bench">
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">🪵</span>
+        <span class="brand-name">GrainForge</span>
+      </div>
+      <span class="bench-title">Photo test bench</span>
+      <div class="top-actions">
+        <a class="ghost-link" href="./">Back to the app</a>
+      </div>
+    </header>
+    <main class="bench-main">
+      <section class="card">
+        <h2>How well do photos turn into models?</h2>
+        <p class="hint">
+          Each piece below is rendered from its true model with known sizes, photographed from the front, the side and at an angle.
+          Every test outlines the piece the way the app does, gives it one real measurement (usually the width), fits a model and
+          compares it with the truth. Sizes the photos never show are marked as guessed.
+        </p>
+        <div class="bench-controls">
+          <label>Outline with
+            <select id="seg">
+              <option value="simple">Simple colour outline (fast, no download)</option>
+              <option value="sam">SlimSAM model (as in the app)</option>
+            </select>
+          </label>
+          <button id="run" type="button" class="primary">Run the tests</button>
+          <span id="status" class="hint"></span>
+        </div>
+        <div id="summary" class="bench-summary"></div>
+      </section>
+      <div id="results"></div>
+    </main>
+    <script type="module" src="/src/bench/main.ts"></script>
+  </body>
+</html>

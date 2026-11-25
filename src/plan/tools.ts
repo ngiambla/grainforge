@@ -22,6 +22,7 @@ export const TOOLS: readonly Tool[] = [
   { id: 'dado-stack', name: 'Dado stack (for the table saw)', category: 'saw' },
   { id: 'band-saw', name: 'Band saw', category: 'saw' },
   { id: 'jigsaw', name: 'Jigsaw', category: 'saw' },
+  { id: 'coping-saw', name: 'Coping saw', category: 'saw' },
   { id: 'drill', name: 'Drill / driver', category: 'power' },
   { id: 'router', name: 'Router', category: 'power' },
   { id: 'router-table', name: 'Router table', category: 'power' },
@@ -35,6 +36,9 @@ export const TOOLS: readonly Tool[] = [
   { id: 'mallet', name: 'Mallet', category: 'hand' },
   { id: 'hand-plane', name: 'Hand plane', category: 'hand' },
   { id: 'rabbet-plane', name: 'Rabbet or shoulder plane', category: 'hand' },
+  { id: 'carving-knife', name: 'Carving knife or hook knife', category: 'hand' },
+  { id: 'spokeshave', name: 'Spokeshave', category: 'hand' },
+  { id: 'rasp', name: 'Rasp or file', category: 'hand' },
   { id: 'pocket-hole-jig', name: 'Pocket-hole jig', category: 'jig' },
   { id: 'dowel-jig', name: 'Doweling jig', category: 'jig' },
   { id: 'dovetail-jig', name: 'Dovetail jig (for the router)', category: 'jig' },
@@ -84,6 +88,8 @@ export const OPERATIONS = {
     needs: [['planer'], ['hand-plane']],
   },
   glue: { id: 'glue', label: 'Glue up', needs: [['clamps']] },
+  shape: { id: 'shape', label: 'Saw curved outlines', needs: [['band-saw'], ['jigsaw'], ['coping-saw']] },
+  carve: { id: 'carve', label: 'Carve to shape', needs: [['carving-knife'], ['spokeshave'], ['rasp']] },
   sand: { id: 'sand', label: 'Sand', needs: [['random-orbit-sander'], ['sandpaper']] },
 } as const satisfies Record<string, Operation>;
 

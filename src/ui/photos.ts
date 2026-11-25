@@ -3,11 +3,11 @@
 
 import type { Photo, Project } from '../format';
 import { formatLength, parseLength, type UnitSystem } from '../format';
-import { analyzeMask, looksAngled, suggestKinds, type FurnitureKind, type Mask, type Silhouette } from '../vision/analysis';
-import { fitFromPhotos } from '../vision/fit';
+import { analyzeMask, looksAngled, type FurnitureKind, type Mask, type Silhouette } from '../vision/analysis';
+import { fitFromPhotos, suggestFromViews } from '../vision/fit';
 import { dimsOf, type Dim, type KnownMeasure, type View } from '../vision/fuse';
 import { boxMask, WorkerSegmenter, type Point, type Segmenter } from '../vision/segmenter';
-import { buildFromFit, KIND_LABEL } from '../vision/templates';
+import { buildFromFit, KIND_LABEL, TABLE_FAMILY } from '../vision/templates';
 import { ThresholdSegmenter } from '../vision/threshold';
 
 const MAX_SIDE = 1024;
@@ -146,7 +146,7 @@ export function openPhotoWizard(units: UnitSystem, onCreate: (p: Project) => voi
   const syncKind = () => {
     const k = kindSel.value as FurnitureKind;
     caseOpts.hidden = !(k === 'bookcase' || k === 'cabinet');
-    tableOpts.hidden = !caseOpts.hidden;
+    tableOpts.hidden = !TABLE_FAMILY.includes(k);
   };
 
   const errorBox = el('p', { class: 'wizard-error', role: 'alert', hidden: true });
@@ -192,10 +192,9 @@ export function openPhotoWizard(units: UnitSystem, onCreate: (p: Project) => voi
       m.dimSel.replaceChildren(...dims.map((d) => el('option', { value: d, textContent: d })));
       if (dims.includes(prevDim as Dim)) m.dimSel.value = prevDim;
     }
-    // Suggest a kind from the first outlined view, preferring straight-on ones.
-    const best =
-      photos.find((p) => (p.view === 'front' || p.view === 'back') && p.silhouette) ?? photos.find((p) => p.silhouette);
-    if (best && !kindTouched) kindSel.value = suggestKinds(best.silhouette!)[0]!;
+    // Suggest a kind from all outlined photos together.
+    const outlined = photos.filter((p) => p.silhouette).map((p) => ({ view: p.view, silhouette: p.silhouette! }));
+    if (outlined.length && !kindTouched) kindSel.value = suggestFromViews(outlined)[0]!;
     syncKind();
   }
 
