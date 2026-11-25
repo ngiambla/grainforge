@@ -104,3 +104,83 @@ describe('fitting', () => {
     expect(fit).toMatchObject({ width: 600, height: 550, depth: 360, leg: 44, apron: 81, overhang: 20 });
   });
 });
+
+/** Fill a convex polygon (points in order). */
+function poly(m: Mask, pts: [number, number][]) {
+  const ys = pts.map((p) => p[1]);
+  for (let y = Math.min(...ys); y <= Math.max(...ys); y++) {
+    const xs: number[] = [];
+    for (let i = 0; i < pts.length; i++) {
+      const [x1, y1] = pts[i]!;
+      const [x2, y2] = pts[(i + 1) % pts.length]!;
+      if ((y >= y1 && y < y2) || (y >= y2 && y < y1)) xs.push(x1 + ((y - y1) * (x2 - x1)) / (y2 - y1));
+    }
+    if (xs.length >= 2) fill(m, Math.round(Math.min(...xs)), y, Math.round(Math.max(...xs) - Math.min(...xs)) + 1, 1);
+  }
+}
+
+/** A slab table seen from above and to the front-left, like a catalogue photo. */
+function angledTable() {
+  const m = emptyMask(600, 400);
+  const L: [number, number] = [40, 110], B: [number, number] = [170, 75], R: [number, number] = [530, 125], F: [number, number] = [400, 160];
+  poly(m, [B, R, F, L]); // top surface
+  poly(m, [L, F, [400, 174], [40, 124]]); // front edge, 14 px thick (about 50 mm)
+  poly(m, [F, R, [530, 139], [400, 174]]); // side edge
+  fill(m, 130, 150, 20, 140); // front-left leg
+  fill(m, 360, 175, 22, 120); // front-right leg
+  fill(m, 200, 120, 16, 110); // back-left leg
+  fill(m, 470, 140, 16, 115); // back-right leg
+  return m;
+}
+
+describe('angled photos', async () => {
+  const { looksAngled } = await import('../src/vision/analysis');
+  const s = analyzeMask(angledTable())!;
+
+  it('recognises a three-quarter view and reads the top', () => {
+    expect(looksAngled(s)).toBe(true);
+    expect(looksAngled(analyzeMask(tableFront())!)).toBe(false);
+    const g = s.angled!;
+    expect(g.corners.front.x).toBeCloseTo(400, 0);
+    expect(g.corners.front.y).toBeCloseTo(160, 0);
+    expect(g.topThickness).toBeGreaterThanOrEqual(13);
+    expect(g.topThickness).toBeLessThanOrEqual(16);
+    expect(s.legs.length).toBeGreaterThanOrEqual(3);
+    expect(suggestKinds(s)[0]).toBe('table');
+  });
+
+  it('builds a slab table with no aprons from one angled photo', () => {
+    const view = { id: 'a', view: 'angled' as const, silhouette: s };
+    const { fit, approximate } = fitFromPhotos([view], { photoId: 'a', dim: 'width', mm: 1300 }, 'table');
+    expect(approximate.sort()).toEqual(['depth', 'height']);
+    expect(fit.aprons).toBe(false);
+    const p = buildFromFit(fit);
+    expect(p.parts.some((x) => x.id.startsWith('apron'))).toBe(false);
+    const plan = buildPlan(p);
+    expect(plan.warnings).toEqual([]);
+    expect(plan.overall.width).toBe(1300);
+  });
+
+  it('lets extra measurements override the angled estimate', () => {
+    const view = { id: 'a', view: 'angled' as const, silhouette: s };
+    const { fit, approximate } = fitFromPhotos(
+      [view],
+      [
+        { photoId: 'a', dim: 'width', mm: 1300 },
+        { photoId: 'a', dim: 'height', mm: 420 },
+      ],
+      'table',
+    );
+    expect(fit.height).toBe(420);
+    expect(approximate).toEqual(['depth']);
+  });
+});
+
+describe('table template limits', () => {
+  it('keeps legs and overhang sensible so aprons never vanish', () => {
+    const p = buildFromFit({ kind: 'table', width: 2000, depth: 900, height: 740, leg: 300, overhang: 300 });
+    const plan = buildPlan(p);
+    expect(plan.warnings).toEqual([]);
+    expect(p.parameters.find((x) => x.id === 'leg')!.value).toBeLessThanOrEqual(135);
+  });
+});

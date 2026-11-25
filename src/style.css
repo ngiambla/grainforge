@@ -294,3 +294,4 @@ dialog.guide::backdrop { background: rgba(20, 12, 6, 0.45); backdrop-filter: blu
 .guide-body h2 { margin: 0 0 16px; font-size: 18px; }
 .guide-body .wizard-actions { padding: 14px 0 18px; margin-top: 10px; }
 .photo-strip[hidden] { display: none; }
+.measure-list { display: flex; flex-direction: column; gap: 8px; }
