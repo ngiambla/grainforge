@@ -14,6 +14,7 @@ import {
 } from './format';
 import { buildPlan, buildSteps, JOINTS, TOOLS, type Plan, type Skill } from './plan';
 import { boardSvg } from './ui/diagram';
+import { openPhotoWizard } from './ui/photos';
 import { Preview3D } from './ui/preview3d';
 
 const AUTOSAVE_KEY = 'grainforge:autosave';
@@ -87,6 +88,11 @@ function showError(message: string | null) {
 function renderAll() {
   els.name.value = project.meta.name;
   els.desc.textContent = project.meta.description;
+  const strip = $('photo-strip');
+  strip.hidden = project.photos.length === 0;
+  strip.replaceChildren(
+    ...project.photos.map((ph) => el('figure', {}, el('img', { src: ph.src, alt: `${ph.view} view` }), el('figcaption', { textContent: ph.view }))),
+  );
   for (const b of document.querySelectorAll<HTMLButtonElement>('[data-units]')) {
     b.setAttribute('aria-checked', String(b.dataset.units === project.units));
   }
@@ -365,6 +371,13 @@ $('btn-new').addEventListener('click', () => {
 $('btn-example').addEventListener('click', () => open(exampleText));
 $('btn-open').addEventListener('click', () => els.file.click());
 $('btn-save').addEventListener('click', () => download(new Blob([saveProject(project)], { type: 'application/json' }), fileName(FILE_EXTENSION)));
+$('btn-photos').addEventListener('click', () =>
+  openPhotoWizard(units(), (p) => {
+    project = p;
+    showError(null);
+    renderAll();
+  }),
+);
 $('btn-frame').addEventListener('click', () => viewer.frame());
 $<HTMLButtonElement>('btn-pdf').addEventListener('click', async (e) => {
   const btn = e.currentTarget as HTMLButtonElement;
