@@ -2,6 +2,7 @@
 
 import type { Mask } from './analysis';
 import type { WorkerRequest, WorkerResponse } from './worker';
+import { REQUEST_TIMEOUT_MS, watchWorker } from './worker-guard';
 
 export type Point = { x: number; y: number; positive: boolean };
 
@@ -15,6 +16,8 @@ export interface Segmenter {
 export class WorkerSegmenter implements Segmenter {
   private worker: Worker | null = null;
   private queue: Promise<unknown> = Promise.resolve();
+  private ready = false;
+  private dead: ((err: Error) => void) | null = null;
 
   constructor(private onStatus: (text: string) => void) {}
 
@@ -22,6 +25,14 @@ export class WorkerSegmenter implements Segmenter {
     if (!this.worker) {
       this.worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
       const files = new Map<string, { loaded: number; total: number }>();
+      const worker = this.worker;
+      watchWorker(worker, 'Outline model', (err) => {
+        if (this.worker !== worker) return;
+        worker.terminate();
+        this.worker = null;
+        this.ready = false;
+        this.dead?.(err);
+      });
       this.worker.addEventListener('message', (e: MessageEvent<WorkerResponse>) => {
         if (e.data.type === 'progress') {
           files.set(e.data.file, { loaded: e.data.loaded, total: e.data.total });
@@ -32,6 +43,7 @@ export class WorkerSegmenter implements Segmenter {
           }
           this.onStatus(`Downloading the outline model (first time only): ${Math.round(loaded / 1e6)} of ${Math.round(total / 1e6)} MB`);
         } else if (e.data.type === 'ready') {
+          this.ready = true;
           this.onStatus(`Model ready (${e.data.device === 'webgpu' ? 'GPU' : 'CPU'})`);
         }
       });
@@ -42,17 +54,23 @@ export class WorkerSegmenter implements Segmenter {
   private request<T extends WorkerResponse['type']>(msg: WorkerRequest, expect: T) {
     const run = () =>
       new Promise<Extract<WorkerResponse, { type: T }>>((resolve, reject) => {
+        const w = this.w;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const done = () => (clearTimeout(timer), w.removeEventListener('message', handler), (this.dead = null));
         const handler = (e: MessageEvent<WorkerResponse>) => {
-          if (e.data.type === expect) {
-            this.w.removeEventListener('message', handler);
-            resolve(e.data as Extract<WorkerResponse, { type: T }>);
-          } else if (e.data.type === 'error') {
-            this.w.removeEventListener('message', handler);
-            reject(new Error(e.data.message));
-          }
+          if (e.data.type === expect) (done(), resolve(e.data as Extract<WorkerResponse, { type: T }>));
+          else if (e.data.type === 'error') (done(), reject(new Error(e.data.message)));
         };
-        this.w.addEventListener('message', handler);
-        this.w.postMessage(msg);
+        const arm = () =>
+          (timer = setTimeout(() => {
+            if (!this.ready) return arm();
+            done();
+            reject(new Error(`Outline model gave no answer for ${REQUEST_TIMEOUT_MS / 1000} s`));
+          }, REQUEST_TIMEOUT_MS));
+        this.dead = (err) => (done(), reject(err));
+        arm();
+        w.addEventListener('message', handler);
+        w.postMessage(msg);
       });
     const p = this.queue.then(run, run);
     this.queue = p.catch(() => undefined);

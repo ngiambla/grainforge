@@ -117,6 +117,7 @@ function renderSummary(sum: ReturnType<typeof summarize>) {
     stat(`${sum.dimError}%`, 'average size error, read from photos'),
     stat(`${sum.within10}%`, 'of sizes within 10%'),
     stat(`${sum.paramError}%`, 'average error on legs, seats, rails'),
+    ...(sum.modelFailures ? [stat(`${sum.modelFailures}`, `photos where a model failed: ${sum.modelErrors.join('; ')}`)] : []),
   );
 }
 
@@ -133,6 +134,7 @@ async function run() {
   const only = params.get('case');
   for (const c of CASES.filter((x) => !only || x.id === only)) {
     status.textContent = `Testing ${c.label} (${results.length + 1} of ${CASES.length})…`;
+    console.log(`[bench] ${c.id} starting`);
     const r = await runCase(c, studio, segmenter, classifier, depth);
     results.push(r);
     $('results').append(await renderCase(r));

@@ -38,6 +38,10 @@ const port = server.address().port;
 const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 page.on('pageerror', (e) => console.error('page error:', e.message));
+// Progress and model failures from the page, so a stall shows where it is.
+page.on('console', (m) => {
+  if (m.text().startsWith('[bench]') || m.type() === 'error') console.error(m.text());
+});
 const q = new URLSearchParams({
   autorun: '1',
   segmenter: args.segmenter ?? 'simple',
@@ -58,6 +62,8 @@ console.log(`Tests with a model: ${s.tests - s.failed}/${s.tests}`);
 console.log(`Kind right first: ${s.kindFirst}%   in top 3: ${s.kindTop3}%`);
 console.log(`Size error (read from photos): ${s.dimError}% average, ${s.within10}% within 10%`);
 console.log(`Leg/seat/rail error: ${s.paramError}%   Tests with warnings: ${s.withWarnings}`);
+console.log(`Photos where a model failed: ${s.modelFailures ?? 0}`);
+for (const e of s.modelErrors ?? []) console.log(`  ${e}`);
 const fmt = (d) => (!d ? '   –  ' : d.given ? ' given' : d.guessed ? ' guess' : `${d.error >= 0 ? '+' : ''}${Math.round(d.error * 100)}%`.padStart(6));
 for (const r of bench.results) {
   console.log(`\n${r.label} (${r.kind})${r.views.filter((v) => v.autoAngled && v.view !== 'angled').map((v) => `  [${v.view} looks angled]`).join('')}`);

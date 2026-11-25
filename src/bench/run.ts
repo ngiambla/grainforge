@@ -22,6 +22,8 @@ export interface ViewShot {
   autoAngled: boolean;
   /** The recognition model's view of the photo, when it ran. */
   kindScores: KindScores | null;
+  /** Models that failed on this photo, with their error messages. */
+  errors: string[];
 }
 
 export interface DimScore {
@@ -119,20 +121,29 @@ export async function runCase(c: BenchCase, studio: Studio, segmenter: Segmenter
   for (const view of Object.keys(CAMERAS) as BenchView[]) {
     const image = await studio.shoot(CAMERAS[view]);
     const key = `${c.id}:${view}`;
+    const errors: string[] = [];
+    // A failing model must show up in the results, not quietly fall back.
+    const failed = (model: string) => (e: unknown) => {
+      const msg = `${model}: ${(e as Error)?.message ?? String(e)}`;
+      errors.push(msg);
+      console.warn(`[bench] ${key} ${msg}`);
+      return null;
+    };
     let mask: Mask | null = null;
     try {
       await segmenter.embed(key, image);
       mask = await segmenter.segment(key, [{ ...clickPoint(await imageData(image)), positive: true }]);
-    } catch {
-      mask = null;
+      if (!mask.data.some(Boolean)) failed('outline')(new Error('empty mask'));
+    } catch (e) {
+      mask = failed('outline')(e);
     }
     const silhouette = mask ? analyzeMask(mask) : null;
     if (depth && mask && silhouette?.angled && view === 'angled') {
-      const map = await depth.estimate(key, image).catch(() => null);
+      const map = await depth.estimate(key, image).catch(failed('depth'));
       if (map) silhouette.angled = correctPerspective(silhouette.angled, disparitySampler(map, mask));
     }
-    const kindScores = classifier ? await classifier.classify(key, image).catch(() => null) : null;
-    shots.push({ view, image, mask, silhouette, autoAngled: !!silhouette && looksAngled(silhouette), kindScores });
+    const kindScores = classifier ? await classifier.classify(key, image).catch(failed('recognition')) : null;
+    shots.push({ view, image, mask, silhouette, autoAngled: !!silhouette && looksAngled(silhouette), kindScores, errors });
   }
 
   const sets: SetResult[] = [];
@@ -189,5 +200,8 @@ export function summarize(results: CaseResult[]) {
     within10: pct(measured.map((d) => (Math.abs(d.error) <= 0.1 ? 1 : 0))),
     paramError: pct(sets.flatMap((s) => Object.values(s.params).map((p) => Math.abs(p.error)))),
     withWarnings: sets.filter((s) => s.warnings.length).length,
+    /** Photos where a model failed, and the distinct messages. */
+    modelFailures: results.reduce((n, r) => n + r.shots.filter((s) => s.errors.length).length, 0),
+    modelErrors: [...new Set(results.flatMap((r) => r.shots.flatMap((s) => s.errors)))].slice(0, 10),
   };
 }

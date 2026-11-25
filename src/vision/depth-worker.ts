@@ -11,6 +11,7 @@ env.allowLocalModels = false;
 export type DepthRequest = { type: 'depth'; key: string; image: Blob };
 export type DepthResponse =
   | { type: 'progress'; file: string; loaded: number; total: number }
+  | { type: 'ready'; device: string }
   | { type: 'depth'; key: string; width: number; height: number; data: Float32Array }
   | { type: 'error'; key?: string; message: string };
 
@@ -25,12 +26,22 @@ function load() {
       if (p.status === 'progress' && p.file) post({ type: 'progress', file: p.file, loaded: p.loaded ?? 0, total: p.total ?? 0 });
     };
     const opts = { revision: DEPTH_REVISION, progress_callback };
-    try {
-      if (!('gpu' in navigator)) throw new Error('no WebGPU');
-      return (await pipeline('depth-estimation', DEPTH_MODEL, { ...opts, device: 'webgpu', dtype: 'fp16' })) as unknown as Estimator;
-    } catch {
-      return (await pipeline('depth-estimation', DEPTH_MODEL, { ...opts, device: 'wasm', dtype: 'fp32' })) as unknown as Estimator;
+    // Only try WebGPU when a real adapter answers; headless browsers can
+    // expose navigator.gpu with nothing usable behind it.
+    const gpu = (navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
+    const adapter = gpu ? await Promise.race([gpu.requestAdapter().catch(() => null), new Promise((r) => setTimeout(() => r(null), 5000))]) : null;
+    if (adapter) {
+      try {
+        const run = (await pipeline('depth-estimation', DEPTH_MODEL, { ...opts, device: 'webgpu', dtype: 'fp16' })) as unknown as Estimator;
+        post({ type: 'ready', device: 'webgpu' });
+        return run;
+      } catch {
+        // fall through to WebAssembly
+      }
     }
+    const run = (await pipeline('depth-estimation', DEPTH_MODEL, { ...opts, device: 'wasm', dtype: 'fp32' })) as unknown as Estimator;
+    post({ type: 'ready', device: 'wasm' });
+    return run;
   })();
   loading.catch(() => (loading = null));
   return loading;
