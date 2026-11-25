@@ -119,6 +119,7 @@ export interface ResolvedPart {
   thickness: number;
   position: { x: number; y: number; z: number };
   rotation: { x: number; y: number; z: number };
+  shape?: 'curved' | 'carved';
 }
 
 export function parameterScope(p: Project, overrides: Record<string, number> = {}) {
@@ -142,6 +143,7 @@ export function resolveParts(p: Project, overrides: Record<string, number> = {})
     thickness: part.thickness !== undefined ? ev(part.thickness) : mats.get(part.material)!.thickness,
     position: { x: ev(part.position.x), y: ev(part.position.y), z: ev(part.position.z) },
     rotation: { x: ev(part.rotation.x), y: ev(part.rotation.y), z: ev(part.rotation.z) },
+    ...(part.shape ? { shape: part.shape } : {}),
   }));
 }
 

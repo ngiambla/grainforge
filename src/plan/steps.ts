@@ -42,6 +42,21 @@ export function buildSteps(plan: Plan, fmt: (mm: number) => string): BuildStep[]
     });
   }
 
+  const shaped = plan.parts.filter((p) => p.shape);
+  if (shaped.length) {
+    const carved = shaped.filter((p) => p.shape === 'carved');
+    steps.push({
+      title: 'Shape the parts',
+      details: [
+        `Draw or print the outline full size and trace it onto ${shaped.map((p) => p.name).join(', ')}, with the grain running along the longest, thinnest section.`,
+        'Saw just outside the line with a band saw, jigsaw or coping saw, then fair the curves with a rasp and sandpaper.',
+        ...(carved.length
+          ? [`Carve ${carved.map((p) => p.name).join(', ')} to shape: rough out with a knife or gouge, cutting downhill with the grain, then refine with a spokeshave or rasp.`]
+          : []),
+      ],
+    });
+  }
+
   steps.push({ title: 'Cut parts to final size', details: ['Cut each part to the finished sizes in the cut list. Cut lengths already include any tenons.'] });
 
   const byType = new Map<string, string[]>();

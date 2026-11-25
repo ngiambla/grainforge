@@ -52,15 +52,18 @@ export function axesOf(view: View): { h: Dim; v: Dim } | null {
 export function dimsOf(v: { view: View; silhouette?: Silhouette | null }): Dim[] {
   const a = axesOf(v.view);
   if (a) return [a.h, a.v];
-  return v.view === 'angled' && (!v.silhouette || v.silhouette.angled) ? [...DIMS] : [];
+  if (v.view !== 'angled') return [];
+  // Without a readable top, an angled photo still shows roughly the width and height.
+  return !v.silhouette || v.silhouette.angled ? [...DIMS] : ['width', 'height'];
 }
 
 /** Pixel length of a dimension in a view, if the view shows it. */
 export function pxOf(v: ViewInput, d: Dim): number | undefined {
   const a = axesOf(v.view);
   if (a) return a.h === d ? v.silhouette.box.width : a.v === d ? v.silhouette.box.height : undefined;
+  if (v.view !== 'angled') return undefined;
   const g = v.silhouette.angled;
-  if (v.view !== 'angled' || !g) return undefined;
+  if (!g) return d === 'width' ? v.silhouette.box.width : d === 'height' ? v.silhouette.box.height : undefined;
   return d === 'width' ? g.long : d === 'depth' ? g.short : g.height;
 }
 
@@ -87,7 +90,7 @@ export function fuseViews(views: ViewInput[], knowns: KnownMeasure | KnownMeasur
   }
   // Straight views first, then angled ones, spreading scale through shared dimensions.
   for (const pass of ['straight', 'angled'] as const) {
-    const group = views.filter((v) => (axesOf(v.view) ? pass === 'straight' : pass === 'angled' && v.silhouette.angled));
+    const group = views.filter((v) => (axesOf(v.view) ? pass === 'straight' : pass === 'angled' && v.view === 'angled'));
     const done = new Set<string>();
     for (let changed = true; changed; ) {
       changed = false;

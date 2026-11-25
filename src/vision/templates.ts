@@ -3,6 +3,7 @@
 
 import { FORMAT_ID, FORMAT_VERSION, Project, type Joint, type Part } from '../format';
 import type { FurnitureKind } from './analysis';
+import { bedProject, chairProject, frameProject, rackProject, utensilProject } from './kinds';
 
 export interface FitInput {
   kind: FurnitureKind;
@@ -19,6 +20,15 @@ export interface FitInput {
   /** Case family. */
   shelves?: number;
   doors?: number;
+  /** Chair. */
+  seatHeight?: number;
+  /** Bed. */
+  railHeight?: number;
+  footHeight?: number;
+  /** Picture frame rail width. */
+  rail?: number;
+  /** Wall rack. */
+  pegs?: number;
 }
 
 export const KIND_LABEL: Record<FurnitureKind, string> = {
@@ -27,6 +37,11 @@ export const KIND_LABEL: Record<FurnitureKind, string> = {
   stool: 'Stool',
   bookcase: 'Bookcase',
   cabinet: 'Cabinet',
+  chair: 'Chair',
+  bed: 'Bed frame',
+  frame: 'Picture frame',
+  rack: 'Wall peg rack',
+  utensil: 'Wooden utensil',
 };
 
 /** Typical depth as a share of width, when no side or top photo gives it. */
@@ -37,6 +52,11 @@ export function typicalDepth(kind: FurnitureKind, width: number): number {
     case 'stool': return Math.round(width);
     case 'bookcase': return 300;
     case 'cabinet': return 450;
+    case 'chair': return Math.round(clamp(width * 1.05, 380, 560));
+    case 'bed': return Math.round(clamp(width + 600, 2050, 2250));
+    case 'frame': return 22;
+    case 'rack': return 100;
+    case 'utensil': return 12;
   }
 }
 
@@ -44,8 +64,20 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 const r = (v: number) => Math.round(v);
 
 export function buildFromFit(fit: FitInput): Project {
-  return fit.kind === 'bookcase' || fit.kind === 'cabinet' ? caseProject(fit) : tableProject(fit);
+  switch (fit.kind) {
+    case 'bookcase':
+    case 'cabinet': return caseProject(fit);
+    case 'chair': return chairProject(fit);
+    case 'bed': return bedProject(fit);
+    case 'frame': return frameProject(fit);
+    case 'rack': return rackProject(fit);
+    case 'utensil': return utensilProject(fit);
+    default: return tableProject(fit);
+  }
 }
+
+/** Kinds built on the table template (legs, top, optional aprons). */
+export const TABLE_FAMILY: readonly FurnitureKind[] = ['table', 'bench', 'stool'];
 
 function tableProject(fit: FitInput): Project {
   const smallest = Math.min(fit.width, fit.depth);
