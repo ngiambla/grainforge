@@ -3,7 +3,8 @@
 
 import { resolveParts } from '../format';
 import { buildPlan } from '../plan';
-import { analyzeMask, looksAngled, type FurnitureKind, type Mask, type Silhouette } from '../vision/analysis';
+import { analyzeMask, correctPerspective, looksAngled, type FurnitureKind, type Mask, type Silhouette } from '../vision/analysis';
+import { disparitySampler, type DepthEstimator } from '../vision/depth';
 import { fitFromPhotos, suggestFromViews } from '../vision/fit';
 import { axesOf, type Dim, type KnownMeasure, type View, type ViewInput } from '../vision/fuse';
 import type { Segmenter } from '../vision/segmenter';
@@ -105,7 +106,7 @@ function knownFor(c: BenchCase, inputs: ViewInput[]): KnownMeasure | null {
   return null;
 }
 
-export async function runCase(c: BenchCase, studio: Studio, segmenter: Segmenter, classifier?: Classifier): Promise<CaseResult> {
+export async function runCase(c: BenchCase, studio: Studio, segmenter: Segmenter, classifier?: Classifier, depth?: DepthEstimator): Promise<CaseResult> {
   const truthProject = buildFromFit(c.truth);
   const truthParams = new Map(truthProject.parameters.map((p) => [p.id, p.value]));
   studio.setModel(
@@ -126,6 +127,10 @@ export async function runCase(c: BenchCase, studio: Studio, segmenter: Segmenter
       mask = null;
     }
     const silhouette = mask ? analyzeMask(mask) : null;
+    if (depth && mask && silhouette?.angled && view === 'angled') {
+      const map = await depth.estimate(key, image).catch(() => null);
+      if (map) silhouette.angled = correctPerspective(silhouette.angled, disparitySampler(map, mask));
+    }
     const kindScores = classifier ? await classifier.classify(key, image).catch(() => null) : null;
     shots.push({ view, image, mask, silhouette, autoAngled: !!silhouette && looksAngled(silhouette), kindScores });
   }

@@ -42,6 +42,21 @@ export interface AngledReading {
   /** Camera elevation and turn worked out from the top's shape, degrees (0 if unknown). */
   elevation: number;
   azimuth: number;
+  /** The raw measurements behind the numbers above, for perspective correction. */
+  raw: {
+    cosE: number;
+    /** Edge lengths before projection, px: back to left corner, back to right corner. */
+    leftEdge: number;
+    rightEdge: number;
+    /** Corner to nearest leg bottom, and edge band, at each side corner, px in the image. */
+    dropL: number;
+    dropR: number;
+    thickL: number;
+    thickR: number;
+    /** Lowest points used for the drops. */
+    footL: Pt;
+    footR: Pt;
+  };
 }
 type Pt = { x: number; y: number };
 
@@ -254,7 +269,8 @@ function readAngled(m: Mask, minX: number, maxX: number, minY: number, maxY: num
   };
   const edgeCols = Math.max(1, Math.round(W * 0.01));
   const sideRuns = (x0: number, step: number) => median(Array.from({ length: edgeCols }, (_, i) => runAt(x0 + i * step)));
-  const thickness = Math.min(sideRuns(minX, 1), sideRuns(maxX, -1));
+  const thickL = sideRuns(minX, 1), thickR = sideRuns(maxX, -1);
+  const thickness = Math.min(thickL, thickR);
   // Height: from each side corner down to the bottom of the nearest leg (or,
   // with no legs, of the case side). Averaging the near and far corner evens
   // out perspective.
@@ -268,6 +284,8 @@ function readAngled(m: Mask, minX: number, maxX: number, minY: number, maxY: num
   const leftLow = first ? lowest(first.x, first.x + first.width - 1) : lowest(minX, minX + span);
   const rightLow = last ? lowest(last.x, last.x + last.width - 1) : lowest(maxX - span, maxX);
   const drop = (leftLow - left.y + rightLow - right.y) / 2;
+  const footL = { x: first ? first.x + first.width / 2 : minX + span / 2, y: leftLow };
+  const footR = { x: last ? last.x + last.width / 2 : maxX - span / 2, y: rightLow };
   // Undo the view, treating the camera as far away (orthographic). Seen from
   // azimuth t and elevation e, the right edge of a W-long top runs along
   // W·(cos t, sin t·sin e) and the left edge of a D-deep top along
@@ -294,6 +312,7 @@ function readAngled(m: Mask, minX: number, maxX: number, minY: number, maxY: num
     corners: { left, back, right, front },
     elevation,
     azimuth,
+    raw: { cosE, leftEdge: a, rightEdge: b, dropL: leftLow - left.y, dropR: rightLow - right.y, thickL, thickR, footL, footR },
   };
 }
 
@@ -348,4 +367,30 @@ export function looksAngled(s: Silhouette): boolean {
   if (!g) return false;
   const drop = 0.06 * s.box.height;
   return g.corners.left.y - s.box.y > drop && g.corners.right.y - s.box.y > drop;
+}
+
+/**
+ * Correct an angled reading for perspective using relative inverse depth
+ * (disparity, larger = nearer) from a depth model. Things look bigger in
+ * proportion to their disparity, so each length is rescaled to the
+ * disparity at the back corner: only ratios matter, because the real-world
+ * scale comes from a known measurement later.
+ */
+export function correctPerspective(g: AngledReading, disparityAt: (p: Pt) => number | undefined): AngledReading {
+  const { back, left, right } = g.corners;
+  const d = (p: Pt) => disparityAt(p);
+  const mid = (p: Pt, q: Pt) => ({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 });
+  const ref = d(back);
+  const k = (p: Pt) => {
+    const v = d(p);
+    return ref && v && v > 0 && ref > 0 ? ref / v : undefined;
+  };
+  const kl = k(mid(back, left)), kr = k(mid(back, right));
+  const kL = k(mid(left, g.raw.footL)), kR = k(mid(right, g.raw.footR));
+  const kLc = k(left), kRc = k(right);
+  if ([kl, kr, kL, kR, kLc, kRc].some((x) => x === undefined || !Number.isFinite(x) || x <= 0 || x > 3)) return g;
+  const a = g.raw.leftEdge * kl!, b = g.raw.rightEdge * kr!;
+  const drop = (g.raw.dropL * kL! + g.raw.dropR * kR!) / 2;
+  const thick = Math.min(g.raw.thickL * kLc!, g.raw.thickR * kRc!);
+  return { ...g, long: Math.max(a, b), short: Math.min(a, b), height: drop / g.raw.cosE, topThickness: thick / g.raw.cosE };
 }

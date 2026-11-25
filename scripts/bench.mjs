@@ -6,6 +6,7 @@
 // Needs a build first (npm run build) and Playwright with Chromium.
 //   npm run bench -- --segmenter=sam    (the real model; needs network for the first download)
 //   npm run bench -- --classifier=clip  (recognise the kind with CLIP; needs network the first time)
+//   npm run bench -- --depth=da          (correct angled photos with Depth Anything V2)
 import { createServer } from 'node:http';
 import { readFile, writeFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
@@ -41,6 +42,7 @@ const q = new URLSearchParams({
   autorun: '1',
   segmenter: args.segmenter ?? 'simple',
   ...(args.classifier ? { classifier: args.classifier } : {}),
+  ...(args.depth ? { depth: args.depth } : {}),
   ...(args.case ? { case: args.case } : {}),
 });
 await page.goto(`http://localhost:${port}/grainforge/bench.html?${q}`);
