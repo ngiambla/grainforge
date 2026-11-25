@@ -1,4 +1,6 @@
 import './style.css';
+import bookcaseText from '../examples/bookcase.grainforge?raw';
+import cabinetText from '../examples/cabinet.grainforge?raw';
 import exampleText from '../examples/side-table.grainforge?raw';
 import {
   FILE_EXTENSION,
@@ -271,7 +273,7 @@ function diagramsView(p: Plan) {
           el(
             'div',
             { class: 'diagram-board' },
-            el('div', { class: 'caption', textContent: `Board ${i + 1}: ${fmt(b.length)} × ${fmt(b.width)}${b.oversize ? ' (larger than stock)' : ''}` }),
+            el('div', { class: 'caption', textContent: `${m.material.kind === 'sheet' ? 'Sheet' : 'Board'} ${i + 1}: ${fmt(b.length)} × ${fmt(b.width)}${b.oversize ? ' (larger than stock)' : ''}` }),
             boardSvg(b, scale),
           ),
         ),
@@ -368,7 +370,37 @@ $('btn-new').addEventListener('click', () => {
   showError(null);
   renderAll();
 });
-$('btn-example').addEventListener('click', () => open(exampleText));
+const EXAMPLES: Record<string, string> = { 'side-table': exampleText, bookcase: bookcaseText, cabinet: cabinetText };
+const exampleBtn = $('btn-example');
+const exampleMenu = $('example-menu');
+const setMenu = (openMenu: boolean) => {
+  exampleMenu.hidden = !openMenu;
+  exampleBtn.setAttribute('aria-expanded', String(openMenu));
+};
+exampleBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  setMenu(exampleMenu.hidden);
+  if (!exampleMenu.hidden) exampleMenu.querySelector<HTMLButtonElement>('button')?.focus();
+});
+exampleMenu.addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-example]');
+  if (!b) return;
+  const units0 = project.units;
+  open(EXAMPLES[b.dataset.example!]!);
+  // Keep the unit system the person is working in.
+  if (project.units !== units0) {
+    project.units = units0;
+    renderAll();
+  }
+  setMenu(false);
+});
+document.addEventListener('click', () => setMenu(false));
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') setMenu(false);
+});
+const guide = $<HTMLDialogElement>('guide');
+$('btn-guide').addEventListener('click', () => guide.showModal());
+$('guide-close').addEventListener('click', () => guide.close());
 $('btn-open').addEventListener('click', () => els.file.click());
 $('btn-save').addEventListener('click', () => download(new Blob([saveProject(project)], { type: 'application/json' }), fileName(FILE_EXTENSION)));
 $('btn-photos').addEventListener('click', () =>

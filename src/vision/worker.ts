@@ -43,15 +43,16 @@ function load() {
     };
     const opts = { revision: SEGMENT_REVISION, progress_callback };
     let model: SamModel;
+    let used = device;
     try {
       model = (await SamModel.from_pretrained(SEGMENT_MODEL, { ...opts, device, dtype: 'fp32' })) as SamModel;
-      post({ type: 'ready', device });
     } catch {
       // WebGPU is still patchy on some systems; WASM works everywhere.
+      used = 'wasm';
       model = (await SamModel.from_pretrained(SEGMENT_MODEL, { ...opts, device: 'wasm', dtype: 'fp32' })) as SamModel;
-      post({ type: 'ready', device: 'wasm' });
     }
     const processor = await AutoProcessor.from_pretrained(SEGMENT_MODEL, opts);
+    post({ type: 'ready', device: used });
     return { model, processor };
   })();
   loading.catch(() => (loading = null));

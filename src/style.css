@@ -272,3 +272,25 @@ dialog.wizard::backdrop { background: rgba(20, 12, 6, 0.45); backdrop-filter: bl
   .wizard-actions { flex-wrap: wrap; }
   .wizard-actions .hint { width: 100%; }
 }
+
+/* Examples menu */
+.menu-wrap { position: relative; }
+.menu {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; min-width: 180px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: 6px;
+  display: flex; flex-direction: column;
+}
+.menu[hidden] { display: none; }
+.menu button { border: none; background: none; text-align: left; padding: 8px 10px; border-radius: 8px; }
+.menu button:hover, .menu button:focus-visible { background: var(--surface-2); outline: none; }
+
+/* Guide */
+dialog.guide {
+  width: min(620px, calc(100vw - 32px)); border: 1px solid var(--border); border-radius: 18px; padding: 0;
+  background: var(--surface); color: var(--text); box-shadow: 0 24px 64px rgba(0,0,0,0.25);
+}
+dialog.guide::backdrop { background: rgba(20, 12, 6, 0.45); backdrop-filter: blur(3px); }
+.guide-body { padding: 22px 22px 0; }
+.guide-body h2 { margin: 0 0 16px; font-size: 18px; }
+.guide-body .wizard-actions { padding: 14px 0 18px; margin-top: 10px; }
+.photo-strip[hidden] { display: none; }

@@ -144,7 +144,7 @@ export function exportPdf(project: Project, plan: Plan, image: string | null): B
         doc.addPage();
         y = M;
       }
-      doc.setFont('helvetica', 'normal').setFontSize(8).text(`Board ${i + 1}: ${fmt(b.length)} × ${fmt(b.width)}${b.oversize ? ' (larger than stock)' : ''}`, M, y + 3);
+      doc.setFont('helvetica', 'normal').setFontSize(8).text(`${m.material.kind === 'sheet' ? 'Sheet' : 'Board'} ${i + 1}: ${fmt(b.length)} × ${fmt(b.width)}${b.oversize ? ' (larger than stock)' : ''}`, M, y + 3);
       y += 4.5;
       doc.setDrawColor(150).setFillColor(245, 238, 228).rect(M, y, b.length * scale, b.width * scale, 'FD');
       for (const p of b.pieces) {
