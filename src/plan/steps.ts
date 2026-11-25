@@ -1,5 +1,6 @@
 // A plain-language build order derived from the plan.
 
+import { METHOD, methodName, STORE } from './adapt';
 import { JOINTS } from './joinery';
 import type { Plan } from './plan';
 
@@ -24,13 +25,29 @@ export function buildSteps(plan: Plan, fmt: (mm: number) => string): BuildStep[]
   }
   if (milling.length) steps.push({ title: 'Mill to thickness', details: milling });
 
-  steps.push({
-    title: 'Cut pieces to rough size',
-    details: [
-      'Follow the cutting diagrams: rip each strip to width first, then crosscut to length.',
-      'Label every piece in pencil as you cut it.',
-    ],
-  });
+  // tool -> verb -> part names
+  const byTool = new Map<string, Map<string, string[]>>();
+  const add = (tool: string, verb: string, name: string) => {
+    const verbs = byTool.get(tool) ?? new Map<string, string[]>();
+    verbs.set(verb, [...(verbs.get(verb) ?? []), name]);
+    byTool.set(tool, verbs);
+  };
+  for (const r of plan.cutList) {
+    if (r.rip) add(r.rip, 'rip to width', r.name);
+    add(r.crosscut, r.buyAs.kind === 'sheet' ? 'cut from the sheet' : 'cut to length', r.name);
+  }
+  const cutting = [
+    plan.cutList.some((r) => r.rip)
+      ? 'Follow the cutting diagrams: rip each strip to width first, then crosscut to length. Label every piece in pencil as you cut it.'
+      : 'Follow the cutting diagrams, and label every piece in pencil as you cut it.',
+  ];
+  for (const [tool, verbs] of byTool) {
+    const lead = tool === STORE ? 'Have the store or lumberyard' : `With the ${methodName(tool).toLowerCase()},`;
+    const tip = METHOD[tool] ?? '';
+    const what = [...verbs].map(([verb, names]) => `${verb}: ${names.join('; ')}`).join('. ');
+    cutting.push(`${lead} ${what}. ${tip.charAt(0).toUpperCase()}${tip.slice(1)}`.trim());
+  }
+  steps.push({ title: 'Cut pieces to rough size', details: cutting });
 
   const glueups = plan.cutList.filter((r) => r.strips > 1);
   if (glueups.length) {
