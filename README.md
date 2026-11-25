@@ -91,6 +91,22 @@ npm run bench -- --case=chair --json=out.json --shot=bench.png
 This needs Playwright with Chromium (`npm i -D playwright && npx playwright install chromium`).
 Add a piece to `src/bench/corpus.ts` to test it.
 
+## Your tools shape the plan
+
+Switch on **Only use tools I have** and pick your tools. The plan changes to suit them:
+
+- Each part's cut list row says which saw cuts it (a miter saw for narrow parts, a
+  circular or track saw for wide ones, and so on).
+- No saw that can rip: parts are bought as boards at the width they need.
+- No planer or hand plane: parts are bought at their finished thickness.
+- No clamps: wide glued-up panels become ready-made edge-glued panels.
+- No saw for sheet goods: the store makes those cuts from the cutting diagram.
+- Joints change to ones you can make, and anything still missing is listed.
+
+Your skill and tools are remembered in your browser for new projects. **Save tools
+file** writes them to a `.gftools` file you can load into any project, on any
+computer, or send to someone else.
+
 ## File format
 
 See [docs/file-format.md](docs/file-format.md).

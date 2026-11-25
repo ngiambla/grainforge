@@ -10,17 +10,25 @@ import {
   loadProject,
   parseLength,
   saveProject,
+  isWorkshopText,
+  loadWorkshop,
+  saveWorkshop,
+  WORKSHOP_FILE_EXTENSION,
+  WorkshopFormatError,
+  workshopOf,
   type JointType,
+  type Workshop,
   type Project,
   type UnitSystem,
 } from './format';
-import { buildPlan, buildSteps, JOINTS, TOOLS, type Plan, type Skill } from './plan';
+import { buildPlan, buildSteps, JOINTS, methodName, TOOL_BY_ID, TOOLS, type Plan, type Skill } from './plan';
 import { boardSvg } from './ui/diagram';
 import { openPhotoWizard } from './ui/photos';
 import { Preview3D } from './ui/preview3d';
 
 const AUTOSAVE_KEY = 'grainforge:autosave';
 const TAB_KEY = 'grainforge:tab';
+const WORKSHOP_KEY = 'grainforge:workshop';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const els = {
@@ -64,6 +72,28 @@ function restore(): Project | null {
   } catch {
     return null;
   }
+}
+/** The maker's own workshop, remembered across projects in this browser. */
+function myWorkshop(): Workshop | null {
+  try {
+    const text = localStorage.getItem(WORKSHOP_KEY);
+    return text ? workshopOf(loadWorkshop(text).file) : null;
+  } catch {
+    return null;
+  }
+}
+function rememberWorkshop() {
+  try {
+    localStorage.setItem(WORKSHOP_KEY, saveWorkshop(project.workshop));
+  } catch {
+    // Only a convenience.
+  }
+}
+/** New projects, examples and photo fits start with the maker's workshop. */
+function withMyWorkshop(p: Project): Project {
+  const w = myWorkshop();
+  if (w) p.workshop = w;
+  return p;
 }
 function readTab() {
   try {
@@ -166,6 +196,7 @@ function renderWorkshop() {
             else tools.add(t.id);
             project.workshop.tools = TOOLS.map((x) => x.id).filter((id) => tools.has(id));
             b.setAttribute('aria-pressed', String(tools.has(t.id)));
+            rememberWorkshop();
             recompute();
           });
           return b;
@@ -207,14 +238,19 @@ function renderTab() {
   }
   const p = plan;
   const views: Record<string, () => Node> = {
-    cuts: () => cutListView(p),
+    cuts: () => withBox(p, cutListView(p)),
     shopping: () => shoppingView(p),
     diagrams: () => diagramsView(p),
     joints: () => jointsView(p),
-    toollist: () => toolsView(p),
+    toollist: () => withBox(p, toolsView(p)),
     steps: () => stepsView(p),
   };
   els.panel.replaceChildren((views[tab] ?? views.cuts!)());
+}
+
+function withBox(p: Plan, view: Node) {
+  const box = adaptationsBox(p);
+  return box ? el('div', {}, box, view) : view;
 }
 
 const tableOf = (head: string[], rows: Node[]) =>
@@ -223,7 +259,7 @@ const tableOf = (head: string[], rows: Node[]) =>
 function cutListView(p: Plan) {
   if (!p.cutList.length) return el('p', { class: 'empty', textContent: 'No parts yet.' });
   return tableOf(
-    ['Part', 'Qty', 'Finished L × W × T', 'Cut to', 'Material'],
+    ['Part', 'Qty', 'Finished L × W × T', 'Cut to', 'Cut with', 'Material'],
     p.cutList.map((r) =>
       el(
         'tr',
@@ -235,10 +271,16 @@ function cutListView(p: Plan) {
           class: 'num',
           textContent: `${fmt(r.cutLength)} × ${fmt(r.cutWidth)}${r.strips > 1 ? `  ×${r.strips} strips` : ''}${r.layers > 1 ? `  ×${r.layers} layers` : ''}`,
         }),
-        el('td', { textContent: r.material.name }),
+        el('td', { class: 'sub-cell', textContent: [r.rip && `Rip: ${methodName(r.rip)}`, `${r.rip ? 'Length: ' : ''}${methodName(r.crosscut)}`].filter(Boolean).join(' · ') }),
+        el('td', { textContent: r.buyAs.name }),
       ),
     ),
   );
+}
+
+function adaptationsBox(p: Plan) {
+  if (!p.adaptations.length) return null;
+  return el('div', { class: 'adaptations' }, el('h4', { textContent: 'Adjusted for your tools' }), el('ul', {}, ...p.adaptations.map((a) => el('li', { textContent: a }))));
 }
 
 function shoppingView(p: Plan) {
@@ -345,9 +387,24 @@ function stepsView(p: Plan) {
 
 // ---------- actions ----------
 
-function open(text: string) {
+function applyWorkshopText(text: string) {
+  try {
+    const { file, unknown } = loadWorkshop(text, new Set(TOOL_BY_ID.keys()));
+    project.workshop = workshopOf(file);
+    rememberWorkshop();
+    showError(unknown.length ? `Loaded "${file.name}". This version of GrainForge doesn't know these tools yet, so they're ignored: ${unknown.join(', ')}.` : null);
+    renderWorkshop();
+    recompute();
+  } catch (e) {
+    showError(e instanceof WorkshopFormatError ? e.message : String(e));
+  }
+}
+
+function open(text: string, fromExample = false) {
+  if (isWorkshopText(text)) return applyWorkshopText(text);
   try {
     project = loadProject(text);
+    if (fromExample || !project.workshop.tools) withMyWorkshop(project);
     showError(null);
     renderAll();
   } catch (e) {
@@ -366,7 +423,7 @@ function download(blob: Blob, name: string) {
 }
 
 $('btn-new').addEventListener('click', () => {
-  project = emptyProject();
+  project = withMyWorkshop(emptyProject());
   showError(null);
   renderAll();
 });
@@ -386,7 +443,7 @@ exampleMenu.addEventListener('click', (e) => {
   const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-example]');
   if (!b) return;
   const units0 = project.units;
-  open(EXAMPLES[b.dataset.example!]!);
+  open(EXAMPLES[b.dataset.example!]!, true);
   // Keep the unit system the person is working in.
   if (project.units !== units0) {
     project.units = units0;
@@ -405,7 +462,7 @@ $('btn-open').addEventListener('click', () => els.file.click());
 $('btn-save').addEventListener('click', () => download(new Blob([saveProject(project)], { type: 'application/json' }), fileName(FILE_EXTENSION)));
 $('btn-photos').addEventListener('click', () =>
   openPhotoWizard(units(), (p) => {
-    project = p;
+    project = withMyWorkshop(p);
     showError(null);
     renderAll();
   }),
@@ -425,6 +482,17 @@ $<HTMLButtonElement>('btn-pdf').addEventListener('click', async (e) => {
   }
 });
 
+const toolsInput = $<HTMLInputElement>('tools-input');
+$('btn-tools-open').addEventListener('click', () => toolsInput.click());
+toolsInput.addEventListener('change', async () => {
+  const f = toolsInput.files?.[0];
+  if (f) applyWorkshopText(await f.text());
+  toolsInput.value = '';
+});
+$('btn-tools-save').addEventListener('click', () =>
+  download(new Blob([saveWorkshop(project.workshop)], { type: 'application/json' }), `my-workshop${WORKSHOP_FILE_EXTENSION}`),
+);
+
 els.file.addEventListener('change', async () => {
   const f = els.file.files?.[0];
   if (f) open(await f.text());
@@ -439,6 +507,7 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('[data-units]')) {
 for (const b of els.skill.querySelectorAll<HTMLButtonElement>('button')) {
   b.addEventListener('click', () => {
     project.workshop.skill = b.dataset.skill as Skill;
+    rememberWorkshop();
     renderWorkshop();
     recompute();
   });
@@ -449,6 +518,7 @@ els.limitTools.addEventListener('change', () => {
     lastToolList = project.workshop.tools ?? [];
     delete project.workshop.tools;
   }
+  rememberWorkshop();
   renderWorkshop();
   recompute();
 });

@@ -94,6 +94,25 @@ tool ids the maker owns (see `src/plan/tools.ts`). When `tools` is absent, plans
 assume any tool is available; when present, joints and methods are picked to
 match and missing tools are called out.
 
+### `.gftools` files
+
+A maker's workshop can also live in its own small file, so it can be reused
+across projects or shared:
+
+```json
+{
+  "format": "grainforge-tools",
+  "version": 1,
+  "name": "Garage shop",
+  "skill": "intermediate",
+  "tools": ["tape-measure", "square", "miter-saw", "circular-saw", "drill", "clamps"],
+  "notes": ""
+}
+```
+
+Loading one sets the open project's `workshop`. An empty `tools` list means
+"not told yet". Tool ids GrainForge doesn't know are kept and reported.
+
 ## Validation
 
 Loading a file checks the schema, then also checks that ids are unique, every

@@ -5,7 +5,8 @@ import { resolveParts, type Material, type Project, type ResolvedPart } from '..
 import { chooseJoint, JOINTS, jointTools, type JointChoice } from './joinery';
 import { boardYield, packPieces, type Board, type Piece } from './layout';
 import { GLUEUP_LENGTH_ALLOWANCE, GLUEUP_WIDTH_ALLOWANCE, stockOf } from './stock';
-import { bestOption, OPERATIONS, TOOLS, type Operation } from './tools';
+import { adaptRow, crosscutFits, CROSSCUT_ORDER, methodName, pickTool, RIP_ORDER, SHEET_ORDER, STORE } from './adapt';
+import { bestOption, canDo, OPERATIONS, TOOLS, type Operation } from './tools';
 
 export interface CutListRow {
   partId: string;
@@ -26,6 +27,11 @@ export interface CutListRow {
   /** Needs planing down from the material's thickness. */
   planeTo: boolean;
   notes: string[];
+  /** What to buy for this part: the design's material, or a substitute that suits the maker's tools. */
+  buyAs: Material;
+  /** Tool (or "store") that cuts it to length, and that rips it to width if it needs ripping. */
+  crosscut: string;
+  rip?: string;
 }
 
 export interface MaterialPlan {
@@ -53,6 +59,8 @@ export interface Plan {
   operations: Operation[];
   tools: ToolNeed[];
   warnings: string[];
+  /** How the plan was changed to suit the maker's tools, in plain words. */
+  adaptations: string[];
   /** Overall bounding box of the assembled piece, mm. */
   overall: { width: number; depth: number; height: number };
 }
@@ -65,6 +73,13 @@ export function buildPlan(project: Project): Plan {
   const units = project.units;
   const owned = workshop.tools ? new Set(workshop.tools) : undefined;
   const warnings: string[] = [];
+  const ctx = {
+    units,
+    owned,
+    canRip: canDo(OPERATIONS.rip.needs, owned),
+    canPlane: canDo(OPERATIONS.thickness.needs, owned),
+    canClamp: canDo(OPERATIONS.glue.needs, owned),
+  };
 
   // Joinery: pick a joint per connection and add the length it needs.
   const joints = project.joints.map((j) => chooseJoint(j, workshop));
@@ -117,6 +132,26 @@ export function buildPlan(project: Project): Plan {
       warnings.push(`${p.name} is larger than a ${m.name} sheet.`);
     }
     if (p.quantity > 0) {
+      const change = adaptRow(m, { width: p.width, thickness: p.thickness, cutWidth, strips, planeTo }, ctx);
+      const buyAs = change.buyAs ?? m;
+      cutWidth = change.cutWidth ?? cutWidth;
+      const wasGlued = strips > 1;
+      strips = change.strips ?? strips;
+      planeTo = change.planeTo ?? planeTo;
+      // Replace notes the substitution made stale.
+      const stale = (n: string) => (change.strips !== undefined && wasGlued && n.startsWith('Glue up from')) || (change.planeTo === false && n === 'Plane down to thickness');
+      notes.splice(0, notes.length, ...notes.filter((n) => !stale(n)));
+      notes.push(...change.notes);
+      if (strips === 1 && cutLength > p.length + (extra.get(p.id) ?? 0)) cutLength = p.length + (extra.get(p.id) ?? 0);
+      const buyStock = stockOf(buyAs, units);
+      let crosscut: string;
+      let rip: string | undefined;
+      if (buyAs.kind === 'sheet') {
+        crosscut = pickTool(SHEET_ORDER, owned) ?? STORE;
+      } else {
+        crosscut = pickTool(CROSSCUT_ORDER, owned, (t) => crosscutFits(t, cutWidth, buyAs.thickness)) ?? STORE;
+        if (cutWidth < buyStock.width - 1) rip = pickTool(RIP_ORDER, owned) ?? STORE;
+      }
       cutList.push({
         partId: p.id,
         name: p.name,
@@ -131,14 +166,20 @@ export function buildPlan(project: Project): Plan {
         layers,
         planeTo,
         notes,
+        buyAs,
+        crosscut,
+        ...(rip ? { rip } : {}),
       });
     }
   }
 
   // Cutting layouts and shopping list, per material.
   const materialPlans: MaterialPlan[] = [];
-  for (const m of project.materials) {
-    const rows = cutList.filter((r) => r.material.id === m.id);
+  const buyList = [...new Map(cutList.map((r) => [r.buyAs.id, r.buyAs])).values()];
+  const matOrder = new Map(project.materials.map((m, i) => [m.id, i]));
+  buyList.sort((a, b) => (matOrder.get(a.id.split('@')[0]!) ?? 99) - (matOrder.get(b.id.split('@')[0]!) ?? 99));
+  for (const m of buyList) {
+    const rows = cutList.filter((r) => r.buyAs.id === m.id);
     if (!rows.length) continue;
     const stock = stockOf(m, units);
     const pieces: Piece[] = [];
@@ -180,9 +221,10 @@ export function buildPlan(project: Project): Plan {
   }
 
   // Operations, then tools.
-  const ops: Operation[] = [OPERATIONS.measure, OPERATIONS.crosscut];
-  if (cutList.some((r) => r.material.kind === 'lumber' && r.cutWidth < stockOf(r.material, units).width - 1)) ops.push(OPERATIONS.rip);
-  if (cutList.some((r) => r.material.kind === 'sheet')) ops.push(OPERATIONS.sheet);
+  const ops: Operation[] = [OPERATIONS.measure];
+  if (cutList.some((r) => r.buyAs.kind === 'lumber')) ops.push(OPERATIONS.crosscut);
+  if (cutList.some((r) => r.rip)) ops.push(OPERATIONS.rip);
+  if (cutList.some((r) => r.buyAs.kind === 'sheet')) ops.push(OPERATIONS.sheet);
   if (cutList.some((r) => r.planeTo || r.layers > 1)) ops.push(OPERATIONS.thickness);
   if (cutList.some((r) => r.strips > 1 || r.layers > 1) || joints.length) ops.push(OPERATIONS.glue);
   if (parts.some((p) => p.shape)) ops.push(OPERATIONS.shape);
@@ -197,7 +239,13 @@ export function buildPlan(project: Project): Plan {
       toolMap.set(id, s);
     }
   };
-  for (const op of ops) need(bestOption(op.needs, owned), op.label);
+  const sawOps = new Set<string>([OPERATIONS.crosscut.id, OPERATIONS.rip.id, OPERATIONS.sheet.id]);
+  for (const op of ops) if (!sawOps.has(op.id)) need(bestOption(op.needs, owned), op.label);
+  for (const r of cutList) {
+    const cut = r.buyAs.kind === 'sheet' ? OPERATIONS.sheet.label : OPERATIONS.crosscut.label;
+    if (r.crosscut !== STORE) need([r.crosscut], cut);
+    if (r.rip && r.rip !== STORE) need([r.rip], OPERATIONS.rip.label);
+  }
   for (const c of joints) need(jointTools(c.type, owned), JOINTS[c.type].label);
 
   const order = new Map(TOOLS.map((t, i) => [t.id, i]));
@@ -214,7 +262,25 @@ export function buildPlan(project: Project): Plan {
     if (missing.length) warnings.push(`You'll need ${missing.length === 1 ? 'a tool' : 'some tools'} you haven't listed: ${missing.map((t) => t.name).join(', ')}.`);
   }
 
-  return { parts, cutList, joints, materials: materialPlans, operations: ops, tools, warnings, overall: bounds(parts) };
+  const adaptations = describeAdaptations(cutList, owned);
+
+  return { parts, cutList, joints, materials: materialPlans, operations: ops, tools, warnings, adaptations, overall: bounds(parts) };
+}
+
+function describeAdaptations(rows: CutListRow[], owned: ReadonlySet<string> | undefined): string[] {
+  if (!owned) return [];
+  const out: string[] = [];
+  const has = (re: RegExp) => rows.some((r) => r.notes.some((n) => re.test(n)));
+  if (has(/^No saw for ripping/)) out.push('You have no saw that rips boards, so each part is bought at the width it needs instead of being ripped from wider boards.');
+  if (has(/^No planer/)) out.push('You have no planer or hand plane, so thinner parts are bought at their finished thickness.');
+  if (has(/^No clamps/)) out.push('You have no clamps, so wide panels come from ready-made edge-glued panels instead of glued-up boards.');
+  const store = rows.filter((r) => r.crosscut === STORE || r.rip === STORE);
+  if (store.length) out.push(`You have no saw for some cuts, so the store or lumberyard makes them: ${store.map((r) => r.name).join(', ')}. Take the cutting diagram with you.`);
+  if (owned.has('miter-saw')) {
+    const wide = rows.filter((r) => r.buyAs.kind === 'lumber' && r.crosscut !== 'miter-saw' && r.crosscut !== STORE);
+    if (wide.length) out.push(`${wide.map((r) => r.name).join(', ')} ${wide.length === 1 ? 'is' : 'are'} too wide for a miter saw, so ${wide.length === 1 ? 'it is' : 'they are'} cut with the ${methodName(wide[0]!.crosscut).toLowerCase()}.`);
+  }
+  return out;
 }
 
 /** World-space corners of a part, after its rotation about its min corner. */
