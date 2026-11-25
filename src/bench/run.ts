@@ -7,6 +7,7 @@ import { analyzeMask, looksAngled, type FurnitureKind, type Mask, type Silhouett
 import { fitFromPhotos, suggestFromViews } from '../vision/fit';
 import { axesOf, type Dim, type KnownMeasure, type View, type ViewInput } from '../vision/fuse';
 import type { Segmenter } from '../vision/segmenter';
+import { combineKinds, type Classifier, type KindScores } from '../vision/classifier';
 import { buildFromFit, TABLE_FAMILY } from '../vision/templates';
 import { CAMERAS, PHOTO_SETS, type BenchCase, type BenchView } from './corpus';
 import { Studio } from './render';
@@ -18,6 +19,8 @@ export interface ViewShot {
   silhouette: Silhouette | null;
   /** Would the app relabel this photo as angled on its own? */
   autoAngled: boolean;
+  /** The recognition model's view of the photo, when it ran. */
+  kindScores: KindScores | null;
 }
 
 export interface DimScore {
@@ -102,7 +105,7 @@ function knownFor(c: BenchCase, inputs: ViewInput[]): KnownMeasure | null {
   return null;
 }
 
-export async function runCase(c: BenchCase, studio: Studio, segmenter: Segmenter): Promise<CaseResult> {
+export async function runCase(c: BenchCase, studio: Studio, segmenter: Segmenter, classifier?: Classifier): Promise<CaseResult> {
   const truthProject = buildFromFit(c.truth);
   const truthParams = new Map(truthProject.parameters.map((p) => [p.id, p.value]));
   studio.setModel(
@@ -123,7 +126,8 @@ export async function runCase(c: BenchCase, studio: Studio, segmenter: Segmenter
       mask = null;
     }
     const silhouette = mask ? analyzeMask(mask) : null;
-    shots.push({ view, image, mask, silhouette, autoAngled: !!silhouette && looksAngled(silhouette) });
+    const kindScores = classifier ? await classifier.classify(key, image).catch(() => null) : null;
+    shots.push({ view, image, mask, silhouette, autoAngled: !!silhouette && looksAngled(silhouette), kindScores });
   }
 
   const sets: SetResult[] = [];
@@ -138,7 +142,8 @@ export async function runCase(c: BenchCase, studio: Studio, segmenter: Segmenter
       sets.push({ ...base, error: 'No outline' });
       continue;
     }
-    const suggested = suggestFromViews(inputs);
+    const scores = set.views.map((v) => shots.find((s) => s.view === v)!.kindScores).filter((s): s is KindScores => !!s);
+    const suggested = combineKinds(scores, suggestFromViews(inputs)).map((r) => r.kind);
     try {
       // Score the fit for the true kind, as if the person corrected any wrong guess.
       const extras = TABLE_FAMILY.includes(c.truth.kind) ? {} : { shelves: c.truth.shelves, doors: c.truth.doors };

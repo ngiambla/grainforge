@@ -327,3 +327,4 @@ dialog.guide::backdrop { background: rgba(20, 12, 6, 0.45); backdrop-filter: blu
   .bench-case td.fair { color: #e6b450; }
   .bench-case td.poor { color: #f2867c; }
 }
+.kind-hint { margin: 0; }

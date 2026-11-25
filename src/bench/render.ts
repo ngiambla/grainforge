@@ -45,10 +45,11 @@ export class Studio {
   /** Show boxes for parts, or one curved outline standing upright. */
   setModel(parts: ResolvedPart[], color: number, outline?: { kind: 'spoon' | 'spatula'; width: number; height: number; thickness: number }) {
     for (const c of [...this.group.children]) this.group.remove(c);
+    const grain = woodGrain();
     const wood = (i: number) => {
       const c = new THREE.Color(color);
       c.offsetHSL(0, 0, ((i * 37) % 7) / 100 - 0.03);
-      return new THREE.MeshStandardMaterial({ color: c, roughness: 0.75 });
+      return new THREE.MeshStandardMaterial({ color: c, roughness: 0.75, map: grain });
     };
     if (outline) {
       const mesh = new THREE.Mesh(outlineGeometry(outline), wood(0));
@@ -146,4 +147,31 @@ function outlineGeometry(o: { kind: 'spoon' | 'spatula'; width: number; height: 
   geo.rotateX(Math.PI / 2);
   geo.translate(w, o.thickness, 0);
   return geo;
+}
+
+let grainTexture: THREE.CanvasTexture | null = null;
+/** A light procedural wood grain, so renders look less like flat plastic (helps the recognition model). */
+function woodGrain() {
+  if (grainTexture) return grainTexture;
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 256;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, 256, 256);
+  let seed = 7;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 70; i++) {
+    const y0 = rand() * 256;
+    const shade = 200 + Math.floor(rand() * 45);
+    ctx.strokeStyle = `rgb(${shade},${shade},${shade})`;
+    ctx.lineWidth = 0.6 + rand() * 1.8;
+    ctx.beginPath();
+    for (let x = 0; x <= 256; x += 8) ctx.lineTo(x, y0 + Math.sin(x / 40 + i) * 3 + rand());
+    ctx.stroke();
+  }
+  grainTexture = new THREE.CanvasTexture(c);
+  grainTexture.wrapS = grainTexture.wrapT = THREE.RepeatWrapping;
+  grainTexture.colorSpace = THREE.SRGBColorSpace;
+  return grainTexture;
 }

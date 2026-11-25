@@ -5,6 +5,7 @@
 //   npm run bench -- --shot=bench.png   (save a screenshot of the report)
 // Needs a build first (npm run build) and Playwright with Chromium.
 //   npm run bench -- --segmenter=sam    (the real model; needs network for the first download)
+//   npm run bench -- --classifier=clip  (recognise the kind with CLIP; needs network the first time)
 import { createServer } from 'node:http';
 import { readFile, writeFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
@@ -36,7 +37,12 @@ const port = server.address().port;
 const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 page.on('pageerror', (e) => console.error('page error:', e.message));
-const q = new URLSearchParams({ autorun: '1', segmenter: args.segmenter ?? 'simple', ...(args.case ? { case: args.case } : {}) });
+const q = new URLSearchParams({
+  autorun: '1',
+  segmenter: args.segmenter ?? 'simple',
+  ...(args.classifier ? { classifier: args.classifier } : {}),
+  ...(args.case ? { case: args.case } : {}),
+});
 await page.goto(`http://localhost:${port}/grainforge/bench.html?${q}`);
 await page.waitForFunction(() => window.bench?.done, null, { timeout: 15 * 60_000 });
 const bench = await page.evaluate(() => window.bench);

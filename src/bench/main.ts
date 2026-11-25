@@ -1,5 +1,6 @@
 import '../style.css';
 import type { Mask } from '../vision/analysis';
+import { WorkerClassifier } from '../vision/classifier';
 import { WorkerSegmenter, type Segmenter } from '../vision/segmenter';
 import { KIND_LABEL } from '../vision/templates';
 import { ThresholdSegmenter } from '../vision/threshold';
@@ -26,6 +27,8 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEl
 const params = new URLSearchParams(location.search);
 const segSel = $('seg') as HTMLSelectElement;
 segSel.value = params.get('segmenter') === 'sam' ? 'sam' : 'simple';
+const clipBox = $('clip') as HTMLInputElement;
+clipBox.checked = params.get('classifier') === 'clip';
 const status = $('status');
 
 async function thumb(image: Blob, mask: Mask | null): Promise<HTMLCanvasElement> {
@@ -121,11 +124,12 @@ async function run() {
   $('results').replaceChildren();
   const segmenter: Segmenter = segSel.value === 'sam' ? new WorkerSegmenter((t) => (status.textContent = t)) : new ThresholdSegmenter();
   const studio = new Studio();
+  const classifier = clipBox.checked ? new WorkerClassifier((t) => (status.textContent = t)) : undefined;
   const results: CaseResult[] = [];
   const only = params.get('case');
   for (const c of CASES.filter((x) => !only || x.id === only)) {
     status.textContent = `Testing ${c.label} (${results.length + 1} of ${CASES.length})…`;
-    const r = await runCase(c, studio, segmenter);
+    const r = await runCase(c, studio, segmenter, classifier);
     results.push(r);
     $('results').append(await renderCase(r));
     renderSummary(summarize(results));
