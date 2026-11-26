@@ -6,7 +6,6 @@
 // Needs a build first (npm run build) and Playwright with Chromium.
 //   npm run bench -- --segmenter=sam    (the real model; needs network for the first download)
 //   npm run bench -- --classifier=clip  (recognise the kind with CLIP; needs network the first time)
-//   npm run bench -- --depth=da          (correct angled photos with Depth Anything V2)
 import { createServer } from 'node:http';
 import { readFile, writeFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
@@ -46,7 +45,6 @@ const q = new URLSearchParams({
   autorun: '1',
   segmenter: args.segmenter ?? 'simple',
   ...(args.classifier ? { classifier: args.classifier } : {}),
-  ...(args.depth ? { depth: args.depth } : {}),
   ...(args.case ? { case: args.case } : {}),
 });
 await page.goto(`http://localhost:${port}/grainforge/bench.html?${q}`);
@@ -64,9 +62,19 @@ console.log(`Size error (read from photos): ${s.dimError}% average, ${s.within10
 console.log(`Leg/seat/rail error: ${s.paramError}%   Tests with warnings: ${s.withWarnings}`);
 console.log(`Photos where a model failed: ${s.modelFailures ?? 0}`);
 for (const e of s.modelErrors ?? []) console.log(`  ${e}`);
+if (s.weightSweep?.length) {
+  console.log('Kind right first / top 3 by outline weight (0 = recognition model only):');
+  for (const w of s.weightSweep) console.log(`  ${String(w.weight).padEnd(5)} ${w.kindFirst}% / ${w.kindTop3}%`);
+}
 const fmt = (d) => (!d ? '   –  ' : d.given ? ' given' : d.guessed ? ' guess' : `${d.error >= 0 ? '+' : ''}${Math.round(d.error * 100)}%`.padStart(6));
 for (const r of bench.results) {
   console.log(`\n${r.label} (${r.kind})${r.views.filter((v) => v.autoAngled && v.view !== 'angled').map((v) => `  [${v.view} looks angled]`).join('')}`);
+  // What the recognition model saw in each photo, on its own.
+  const seen = r.views.filter((v) => v.kindScores).map((v) => {
+    const [k, p] = Object.entries(v.kindScores).sort((a, b) => b[1] - a[1])[0];
+    return `${v.view} ${k} ${Math.round(p * 100)}%`;
+  });
+  if (seen.length) console.log(`  model sees: ${seen.join(', ')}`);
   for (const set of r.sets) {
     if (set.error) { console.log(`  ${set.set.padEnd(10)} ERROR ${set.error}`); continue; }
     const p = Object.entries(set.params).map(([k, d]) => `${k} ${fmt(d).trim()}`).join(' ');

@@ -3,8 +3,7 @@
 
 import { resolveParts } from '../format';
 import { buildPlan } from '../plan';
-import { analyzeMask, correctPerspective, looksAngled, type FurnitureKind, type Mask, type Silhouette } from '../vision/analysis';
-import { disparitySampler, type DepthEstimator } from '../vision/depth';
+import { analyzeMask, looksAngled, type FurnitureKind, type Mask, type Silhouette } from '../vision/analysis';
 import { fitFromPhotos, suggestFromViews } from '../vision/fit';
 import { axesOf, type Dim, type KnownMeasure, type View, type ViewInput } from '../vision/fuse';
 import type { Segmenter } from '../vision/segmenter';
@@ -42,6 +41,8 @@ export interface SetResult {
   views: BenchView[];
   /** Kinds suggested from the best photo, most likely first. */
   suggested: FurnitureKind[];
+  /** The outline rules' ranking on their own. */
+  outline: FurnitureKind[];
   kindRank: number; // 0 = right first time, -1 = not offered
   dims: Partial<Record<Dim, DimScore>>;
   params: Record<string, DimScore>;
@@ -108,7 +109,7 @@ function knownFor(c: BenchCase, inputs: ViewInput[]): KnownMeasure | null {
   return null;
 }
 
-export async function runCase(c: BenchCase, studio: Studio, segmenter: Segmenter, classifier?: Classifier, depth?: DepthEstimator): Promise<CaseResult> {
+export async function runCase(c: BenchCase, studio: Studio, segmenter: Segmenter, classifier?: Classifier): Promise<CaseResult> {
   const truthProject = buildFromFit(c.truth);
   const truthParams = new Map(truthProject.parameters.map((p) => [p.id, p.value]));
   studio.setModel(
@@ -138,10 +139,6 @@ export async function runCase(c: BenchCase, studio: Studio, segmenter: Segmenter
       mask = failed('outline')(e);
     }
     const silhouette = mask ? analyzeMask(mask) : null;
-    if (depth && mask && silhouette?.angled && view === 'angled') {
-      const map = await depth.estimate(key, image).catch(failed('depth'));
-      if (map) silhouette.angled = correctPerspective(silhouette.angled, disparitySampler(map, mask));
-    }
     const kindScores = classifier ? await classifier.classify(key, image).catch(failed('recognition')) : null;
     shots.push({ view, image, mask, silhouette, autoAngled: !!silhouette && looksAngled(silhouette), kindScores, errors });
   }
@@ -152,14 +149,15 @@ export async function runCase(c: BenchCase, studio: Studio, segmenter: Segmenter
       .map((v) => shots.find((s) => s.view === v)!)
       .filter((s) => s.silhouette)
       .map((s) => ({ id: s.view, view: VIEW_LABEL[s.view], silhouette: s.silhouette! }));
-    const base: SetResult = { set: set.id, views: set.views, suggested: [], kindRank: -1, dims: {}, params: {}, warnings: [] };
+    const base: SetResult = { set: set.id, views: set.views, suggested: [], outline: [], kindRank: -1, dims: {}, params: {}, warnings: [] };
     const known = knownFor(c, inputs);
     if (!inputs.length || !known) {
       sets.push({ ...base, error: 'No outline' });
       continue;
     }
     const scores = set.views.map((v) => shots.find((s) => s.view === v)!.kindScores).filter((s): s is KindScores => !!s);
-    const suggested = combineKinds(scores, suggestFromViews(inputs)).map((r) => r.kind);
+    const outline = suggestFromViews(inputs);
+    const suggested = combineKinds(scores, outline).map((r) => r.kind);
     try {
       // Score the fit for the true kind, as if the person corrected any wrong guess.
       const extras = TABLE_FAMILY.includes(c.truth.kind) ? {} : { shelves: c.truth.shelves, doors: c.truth.doors };
@@ -177,12 +175,35 @@ export async function runCase(c: BenchCase, studio: Studio, segmenter: Segmenter
         const got = project.parameters.find((p) => p.id === id)?.value;
         if (truth !== undefined && got !== undefined) params[id] = score(truth, got);
       }
-      sets.push({ ...base, suggested, kindRank: suggested.indexOf(c.truth.kind), dims, params, warnings: plan.warnings });
+      sets.push({ ...base, suggested, outline, kindRank: suggested.indexOf(c.truth.kind), dims, params, warnings: plan.warnings });
     } catch (e) {
-      sets.push({ ...base, suggested, kindRank: suggested.indexOf(c.truth.kind), error: (e as Error).message });
+      sets.push({ ...base, suggested, outline, kindRank: suggested.indexOf(c.truth.kind), error: (e as Error).message });
     }
   }
   return { case: c, shots, sets };
+}
+
+/** Outline weights tried when the recognition model ran (0 = model only). */
+export const OUTLINE_WEIGHTS = [0, 0.15, 0.3, 0.5, 1, 2, 4];
+
+/**
+ * How the kind guess would score at each outline weight, from the model's
+ * stored answers, so the weight can be tuned without running the model again.
+ */
+export function weightSweep(results: CaseResult[]) {
+  const rows = results.flatMap((r) =>
+    r.sets.filter((s) => !s.error).map((s) => ({
+      truth: r.case.truth.kind,
+      outline: s.outline,
+      scores: s.views.map((v) => r.shots.find((x) => x.view === v)?.kindScores).filter((k): k is KindScores => !!k),
+    })),
+  );
+  if (!rows.some((r) => r.scores.length)) return [];
+  const pct = (n: number) => Math.round((n / rows.length) * 1000) / 10;
+  return OUTLINE_WEIGHTS.map((weight) => {
+    const ranks = rows.map((r) => (weight === 0 ? combineKinds(r.scores, [], 0) : combineKinds(r.scores, r.outline, weight)).map((k) => k.kind).indexOf(r.truth));
+    return { weight, kindFirst: pct(ranks.filter((k) => k === 0).length), kindTop3: pct(ranks.filter((k) => k >= 0 && k < 3).length) };
+  });
 }
 
 /** One-line numbers for the whole run. */
@@ -203,5 +224,7 @@ export function summarize(results: CaseResult[]) {
     /** Photos where a model failed, and the distinct messages. */
     modelFailures: results.reduce((n, r) => n + r.shots.filter((s) => s.errors.length).length, 0),
     modelErrors: [...new Set(results.flatMap((r) => r.shots.flatMap((s) => s.errors)))].slice(0, 10),
+    /** Kind accuracy at other outline weights, when the recognition model ran. */
+    weightSweep: weightSweep(results),
   };
 }
