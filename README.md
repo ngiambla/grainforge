@@ -86,7 +86,30 @@ Headless, from a build:
 npm run build
 npm run bench                          # summary and per-piece table
 npm run bench -- --case=chair --json=out.json --shot=bench.png
+npm run bench -- --segmenter=sam       # outline with SlimSAM (WebAssembly if no GPU)
+npm run bench -- --classifier=clip     # also recognise the kind with CLIP
 ```
+
+The bench prints every photo where a model failed, with its error. With
+`--classifier=clip` it also prints what CLIP saw in each photo and how the kind
+guess scores at several balances between CLIP and the outline rules.
+
+What the models did on the bench (November 2026, synthetic renders):
+
+| Run | Kind right first | Average size error |
+| --- | --- | --- |
+| Simple outline, rules only | 90% | 8.9% |
+| CLIP alone for the kind | 63% | (same sizes) |
+| CLIP with rules, best balance | 90% | (same sizes) |
+| SlimSAM outline, one click | 60% | 70.7% |
+| Depth Anything V2 perspective fix | 90% | 10.2% |
+
+CLIP ([openai/clip-vit-base-patch32](https://huggingface.co/Xenova/clip-vit-base-patch32), MIT)
+is strong on chairs, frames and utensils but never saw the bed as a bed, so in
+the app it is opt-in (`?classifier=clip`) and only breaks ties. Depth Anything
+was dropped. SlimSAM's numbers come from a single automatic click; in the app
+you add clicks until the outline is right. The renders are plain, which flatters
+the rules, so real photos with known sizes are the next thing the bench needs.
 
 This needs Playwright with Chromium (`npm i -D playwright && npx playwright install chromium`).
 Add a piece to `src/bench/corpus.ts` to test it.

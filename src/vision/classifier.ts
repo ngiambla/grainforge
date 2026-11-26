@@ -69,10 +69,12 @@ export class WorkerClassifier implements Classifier {
 
 /**
  * Combine the classifier's view of each photo (what the piece looks like)
- * with the outline's ranking (its shape and proportions). The classifier
- * leads; the outline breaks near-ties and fills in when the model can't run.
+ * with the outline's ranking (its shape and proportions). On the photo bench
+ * the outline rules were more reliable than CLIP at every balance tried
+ * (CLIP alone 63% right first, rules alone 90%), so the outline leads; the
+ * model breaks ties and fills in when the outline found nothing.
  */
-export function combineKinds(photoScores: KindScores[], outlineRanking: FurnitureKind[], outlineWeight = 0.15): { kind: FurnitureKind; score: number }[] {
+export function combineKinds(photoScores: KindScores[], outlineRanking: FurnitureKind[], outlineWeight = 4): { kind: FurnitureKind; score: number }[] {
   const total = new Map<FurnitureKind, number>();
   const n = photoScores.length;
   for (const s of photoScores) for (const [k, p] of Object.entries(s) as [FurnitureKind, number][]) total.set(k, (total.get(k) ?? 0) + p / n);

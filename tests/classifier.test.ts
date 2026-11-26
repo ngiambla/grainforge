@@ -11,11 +11,15 @@ describe('recognition model scores', () => {
     expect(Object.entries(p).sort((a, b) => b[1] - a[1])[0]![0]).toBe('cabinet');
   });
 
-  it('lets the model lead and the outline break near-ties', () => {
+  it('lets the outline lead and the model break ties', () => {
     const chairy = kindProbabilities(sims('a photo of a dining chair'));
-    expect(combineKinds([chairy], ['stool', 'table'])[0]!.kind).toBe('chair');
+    expect(combineKinds([chairy], ['stool', 'table'])[0]!.kind).toBe('stool');
     const tie = { table: 0.5, bench: 0.5 };
     expect(combineKinds([tie], ['bench', 'table'])[0]!.kind).toBe('bench');
+  });
+
+  it('uses the model alone when the outline found nothing', () => {
+    expect(combineKinds([{ chair: 0.9, stool: 0.1 }], [])[0]!.kind).toBe('chair');
   });
 
   it('falls back to the outline alone when the model gave nothing', () => {

@@ -82,7 +82,9 @@ export function openPhotoWizard(units: UnitSystem, onCreate: (p: Project) => voi
   const status = el('p', { class: 'wizard-status', ariaLive: 'polite' });
   const setStatus = (t: string) => (status.textContent = t);
   segmenter ??= params.get('segmenter') === 'simple' ? new ThresholdSegmenter() : new WorkerSegmenter(setStatus);
-  if (params.get('classifier') === 'off') classifierFailed = true;
+  // CLIP didn't beat the outline rules on the photo bench, so it's opt-in
+  // (?classifier=clip) until real photos show it helps, rather than a large download for no gain.
+  if (params.get('classifier') !== 'clip') classifierFailed = true;
   classifier ??= new WorkerClassifier(setStatus);
 
   const photos: PhotoState[] = [];
