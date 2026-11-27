@@ -10,6 +10,8 @@ import { combineKinds, WorkerClassifier, type Classifier, type KindScores } from
 import { boxMask, WorkerSegmenter, type Point, type Segmenter } from '../vision/segmenter';
 import { buildFromFit, KIND_LABEL, TABLE_FAMILY } from '../vision/templates';
 import { ThresholdSegmenter } from '../vision/threshold';
+import { PIECE_PHRASE, pieceBox, WorkerFlorence, type Detector } from '../vision/florence';
+import type { Box } from '../vision/boxes';
 
 const MAX_SIDE = 1024;
 const STORED_SIDE = 800;
@@ -32,6 +34,8 @@ interface PhotoState {
   viewTouched: boolean;
   /** What the recognition model thinks the photo shows. */
   kindScores: KindScores | null;
+  /** Where the detection model found the piece, if it did. */
+  box: Box | null;
 }
 
 const VIEWS: [View, string][] = [
@@ -47,6 +51,8 @@ let segmenter: Segmenter | null = null;
 let modelFailed = false;
 let classifier: Classifier | null = null;
 let classifierFailed = false;
+let detector: Detector | null = null;
+let detectorFailed = false;
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> & { class?: string } = {}, ...children: (Node | string)[]) {
   const e = document.createElement(tag);
@@ -88,6 +94,10 @@ export function openPhotoWizard(units: UnitSystem, onCreate: (p: Project) => voi
   const choice = params.get('classifier');
   if (choice === 'off') classifierFailed = true;
   classifier ??= new WorkerClassifier(setStatus, choice === 'clip' ? 'clip' : 'siglip');
+  // Florence-2 finds the piece so it can be outlined without a click
+  // (?florence=off to turn it off).
+  if (params.get('florence') === 'off') detectorFailed = true;
+  detector ??= new WorkerFlorence(setStatus);
 
   const photos: PhotoState[] = [];
   let counter = 0;
@@ -296,12 +306,35 @@ export function openPhotoWizard(units: UnitSystem, onCreate: (p: Project) => voi
       p.status.textContent = 'Outlining…';
       p.embedded ??= segmenter!.embed(p.id, p.blob);
       await p.embedded;
-      const mask = await segmenter!.segment(p.id, p.points);
+      const mask = await segmenter!.segment(p.id, p.points, p.box ?? undefined);
       setMask(p, mask);
     } catch (err) {
       p.embedded = null;
       modelFailed = true;
       useBoxMode(p, `The outline model couldn't run here (${(err as Error).message}). Draw a box around the piece instead.`);
+    }
+  }
+
+  /**
+   * Outline a photo nobody has clicked yet: find the piece with the detection
+   * model, then outline the shape that fills that box.
+   */
+  async function autoOutline(p: PhotoState, kind: FurnitureKind) {
+    if (detectorFailed || p.points.length || p.mask) return;
+    p.status.textContent = 'Looking for the piece…';
+    try {
+      const box = pieceBox(await detector!.ground(p.id, p.blob, PIECE_PHRASE[kind]));
+      if (!box || p.points.length || p.mask || !photos.includes(p)) return describe(p);
+      p.box = box;
+      // Without the outline model, the detected box is the outline.
+      if (p.mode === 'box') return setMask(p, boxMask(p.width, p.height, box));
+      p.points = [{ x: (box.x0 + box.x1) / 2, y: (box.y0 + box.y1) / 2, positive: true }];
+      draw(p);
+      await runSegment(p);
+      if (p.silhouette) p.status.textContent += ' · outlined automatically, click to adjust';
+    } catch {
+      detectorFailed = true; // people click instead
+      describe(p);
     }
   }
 
@@ -328,7 +361,7 @@ export function openPhotoWizard(units: UnitSystem, onCreate: (p: Project) => voi
         el('div', { class: 'photo-tools' }, modeBtn, clearBtn, removeBtn),
       );
       grid.append(card);
-      const p: PhotoState = { id, view, ...prep, points: [], mask: null, silhouette: null, mode: modelFailed ? 'box' : 'click', embedded: null, canvas, status, viewSel, viewTouched: false, kindScores: null };
+      const p: PhotoState = { id, view, ...prep, points: [], mask: null, silhouette: null, mode: modelFailed ? 'box' : 'click', embedded: null, canvas, status, viewSel, viewTouched: false, kindScores: null, box: null };
       photos.push(p);
       draw(p);
       if (modelFailed) useBoxMode(p);
@@ -339,6 +372,7 @@ export function openPhotoWizard(units: UnitSystem, onCreate: (p: Project) => voi
           (s) => {
             p.kindScores = s;
             refreshForm();
+            void autoOutline(p, kindSel.value as FurnitureKind);
           },
           () => {
             classifierFailed = true; // fall back to the outline cues
@@ -367,6 +401,7 @@ export function openPhotoWizard(units: UnitSystem, onCreate: (p: Project) => voi
       });
       clearBtn.addEventListener('click', () => {
         p.points = [];
+        p.box = null;
         setMask(p, null);
       });
       removeBtn.addEventListener('click', () => {

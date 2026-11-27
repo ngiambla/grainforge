@@ -8,11 +8,13 @@ import type { ClassifyModel } from '../vision/classifier-worker';
 import { WorkerSegmenter, type Segmenter } from '../vision/segmenter';
 import { ThresholdSegmenter } from '../vision/threshold';
 import { clickPoint, imageData } from './run';
-import { confusions, scoreMethods, type ListingAnswer, type PhotoAnswer } from './photo-score';
+import { confusions, countsFromName, scoreMethods, type ListingAnswer, type PhotoAnswer } from './photo-score';
+import { COUNTED_PARTS, PIECE_PHRASE, WorkerFlorence, countParts, pieceBox } from '../vision/florence';
+import type { Box } from '../vision/boxes';
 
 declare global {
   interface Window {
-    photoBench?: { done: boolean; scores?: ReturnType<typeof scoreMethods>; confusions?: Record<string, [string, number][]>; listings?: ListingAnswer[]; errors?: string[]; error?: string };
+    photoBench?: { done: boolean; florence?: FlorenceScore; scores?: ReturnType<typeof scoreMethods>; confusions?: Record<string, [string, number][]>; listings?: ListingAnswer[]; errors?: string[]; error?: string };
   }
 }
 
@@ -25,6 +27,15 @@ interface Manifest {
 const params = new URLSearchParams(location.search);
 const data = params.get('data') ?? 'bench-data/abo';
 const models = (params.get('models') ?? 'clip,siglip').split(',').filter(Boolean) as ClassifyModel[];
+const useFlorence = params.get('florence') === '1';
+
+interface FlorenceScore {
+  /** Main photos where a box for the piece came back. */
+  found: number;
+  photos: number;
+  /** Per part: listings whose name states a count, exact and within one. */
+  counts: Record<string, { listings: number; exact: number; withinOne: number; examples: string[] }>;
+}
 const status = document.getElementById('status')!;
 const say = (t: string) => (status.textContent = t);
 
@@ -39,17 +50,43 @@ async function run() {
   const classifiers = models.map((m) => [m, new WorkerClassifier(say, m)] as const);
   const errors: string[] = [];
   const listings: ListingAnswer[] = [];
+  const florence = useFlorence ? new WorkerFlorence(say) : null;
+  const fl: FlorenceScore = { found: 0, photos: 0, counts: {} };
   for (const [n, item] of items.entries()) {
     console.log(`[bench] ${n + 1}/${items.length} ${item.kind} ${item.id}`);
     say(`Testing ${n + 1} of ${items.length}: ${item.name}`);
     const photos: PhotoAnswer[] = [];
-    for (const img of item.images) {
+    for (const [i, img] of item.images.entries()) {
       const key = `${item.id}:${img.file}`;
       const blob = await (await fetch(`${data}/${img.file}`)).blob();
       let rules: FurnitureKind[] = [];
+      let box: Box | null = null;
+      // Florence-2 on the main photo: find the piece (by its true kind, to
+      // test the detector on its own), then count the parts the name states.
+      if (florence && i === 0) {
+        fl.photos++;
+        try {
+          box = pieceBox(await florence.ground(key, blob, PIECE_PHRASE[item.kind]));
+          if (box) fl.found++;
+          const truth = countsFromName(item.name);
+          for (const { part, phrase } of COUNTED_PARTS[item.kind] ?? []) {
+            const want = truth[part as keyof typeof truth];
+            if (!want) continue;
+            const got = countParts(await florence.ground(key, blob, phrase), box);
+            const c = (fl.counts[part] ??= { listings: 0, exact: 0, withinOne: 0, examples: [] });
+            c.listings++;
+            if (got === want) c.exact++;
+            if (Math.abs(got - want) <= 1) c.withinOne++;
+            if (c.examples.length < 8) c.examples.push(`${want}→${got}`);
+          }
+        } catch (e) {
+          errors.push(`florence: ${(e as Error).message}`);
+          console.warn(`[bench] ${key} florence: ${(e as Error).message}`);
+        }
+      }
       try {
         await segmenter.embed(key, blob);
-        const mask = await segmenter.segment(key, [{ ...clickPoint(await imageData(blob)), positive: true }]);
+        const mask = await segmenter.segment(key, [box ? { x: (box.x0 + box.x1) / 2, y: (box.y0 + box.y1) / 2, positive: true } : { ...clickPoint(await imageData(blob)), positive: true }], box ?? undefined);
         const s = analyzeMask(mask);
         if (s) rules = suggestKinds(s);
       } catch (e) {
@@ -79,7 +116,7 @@ async function run() {
     }),
   );
   say(`Done. Photos: ${manifest.credit} ${manifest.license}.`);
-  window.photoBench = { done: true, scores, confusions: conf, listings, errors: [...new Set(errors)].slice(0, 10) };
+  window.photoBench = { done: true, scores, confusions: conf, listings, errors: [...new Set(errors)].slice(0, 10), ...(florence ? { florence: fl } : {}) };
 }
 
 run().catch((e) => {

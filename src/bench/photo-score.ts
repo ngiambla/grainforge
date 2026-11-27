@@ -96,3 +96,19 @@ export function confusions(listings: ListingAnswer[], models: string[], method: 
   }
   return [...counts].sort((a, b) => b[1] - a[1]).slice(0, limit);
 }
+
+/** Part counts a listing's name states, such as "5-Tier Bookcase" or "8 Hooks". */
+export function countsFromName(name: string): Partial<Record<'shelves' | 'doors' | 'pegs', number>> {
+  const n = (re: RegExp) => {
+    const m = name.match(re);
+    return m ? Number(m[1]) : undefined;
+  };
+  const out: Partial<Record<'shelves' | 'doors' | 'pegs', number>> = {};
+  const shelves = n(/(\d+)[- ]?(?:tier|shelf|shelves)\b/i);
+  const doors = n(/(\d+)[- ]?doors?\b/i);
+  const pegs = n(/(\d+)\s*(?:[a-z]+\s)?(?:hooks?|pegs?)\b/i);
+  if (shelves) out.shelves = shelves;
+  if (doors) out.doors = doors;
+  if (pegs) out.pegs = pegs;
+  return out;
+}
