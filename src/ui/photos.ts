@@ -82,10 +82,12 @@ export function openPhotoWizard(units: UnitSystem, onCreate: (p: Project) => voi
   const status = el('p', { class: 'wizard-status', ariaLive: 'polite' });
   const setStatus = (t: string) => (status.textContent = t);
   segmenter ??= params.get('segmenter') === 'simple' ? new ThresholdSegmenter() : new WorkerSegmenter(setStatus);
-  // CLIP didn't beat the outline rules on the photo bench, so it's opt-in
-  // (?classifier=clip) until real photos show it helps, rather than a large download for no gain.
-  if (params.get('classifier') !== 'clip') classifierFailed = true;
-  classifier ??= new WorkerClassifier(setStatus);
+  // SigLIP recognises the kind: on real catalog photos it was right first for
+  // 86% of listings, against 64% for CLIP and 17% for the outline rules.
+  // ?classifier=clip picks CLIP, ?classifier=off the outline rules alone.
+  const choice = params.get('classifier');
+  if (choice === 'off') classifierFailed = true;
+  classifier ??= new WorkerClassifier(setStatus, choice === 'clip' ? 'clip' : 'siglip');
 
   const photos: PhotoState[] = [];
   let counter = 0;

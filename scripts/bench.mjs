@@ -5,7 +5,7 @@
 //   npm run bench -- --shot=bench.png   (save a screenshot of the report)
 // Needs a build first (npm run build) and Playwright with Chromium.
 //   npm run bench -- --segmenter=sam    (the real model; needs network for the first download)
-//   npm run bench -- --classifier=clip  (recognise the kind with CLIP; needs network the first time)
+//   npm run bench -- --classifier=siglip (recognise the kind with SigLIP, or =clip; needs network the first time)
 //   npm run bench -- --photos           (real catalog photos: run node scripts/abo-select.mjs first;
 //                                        --models=clip,siglip  --segmenter=sam  --kinds=chair,table)
 import { createServer } from 'node:http';

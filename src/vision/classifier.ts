@@ -69,12 +69,13 @@ export class WorkerClassifier implements Classifier {
 
 /**
  * Combine the classifier's view of each photo (what the piece looks like)
- * with the outline's ranking (its shape and proportions). On the photo bench
- * the outline rules were more reliable than CLIP at every balance tried
- * (CLIP alone 63% right first, rules alone 90%), so the outline leads; the
- * model breaks ties and fills in when the outline found nothing.
+ * with the outline's ranking (its shape and proportions). On real catalog
+ * photos SigLIP alone was right first for 86% of listings and the outline
+ * rules for 17%; a light outline weight (0.15) kept SigLIP's score, and
+ * heavier ones dragged it down. So the model leads, the outline breaks near
+ * ties, and the outline decides alone only when no model could run.
  */
-export function combineKinds(photoScores: KindScores[], outlineRanking: FurnitureKind[], outlineWeight = 4): { kind: FurnitureKind; score: number }[] {
+export function combineKinds(photoScores: KindScores[], outlineRanking: FurnitureKind[], outlineWeight = 0.15): { kind: FurnitureKind; score: number }[] {
   const total = new Map<FurnitureKind, number>();
   const n = photoScores.length;
   for (const s of photoScores) for (const [k, p] of Object.entries(s) as [FurnitureKind, number][]) total.set(k, (total.get(k) ?? 0) + p / n);
