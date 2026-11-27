@@ -6,6 +6,8 @@
 // Needs a build first (npm run build) and Playwright with Chromium.
 //   npm run bench -- --segmenter=sam    (the real model; needs network for the first download)
 //   npm run bench -- --classifier=clip  (recognise the kind with CLIP; needs network the first time)
+//   npm run bench -- --photos           (real catalog photos: run node scripts/abo-select.mjs first;
+//                                        --models=clip,siglip  --segmenter=sam  --kinds=chair,table)
 import { createServer } from 'node:http';
 import { readFile, writeFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
@@ -22,11 +24,14 @@ try {
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => a.replace(/^--/, '').split('=')));
 const root = new URL('../dist/', import.meta.url).pathname;
-const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.wasm': 'application/wasm' };
+const repo = new URL('../', import.meta.url).pathname;
+const types = { '.jpg': 'image/jpeg', '.json': 'application/json', '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.wasm': 'application/wasm' };
 const server = createServer(async (req, res) => {
   const path = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname).replace(/^\/grainforge\//, '/'));
   try {
-    const body = await readFile(join(root, path.endsWith('/') ? path + 'index.html' : path));
+    // Real-photo data lives outside the build, in a folder git ignores.
+    const base = path.startsWith('/bench-data/') ? repo : root;
+    const body = await readFile(join(base, path.endsWith('/') ? path + 'index.html' : path));
     res.writeHead(200, { 'content-type': types[extname(path)] ?? 'application/octet-stream' }).end(body);
   } catch {
     res.writeHead(404).end();
@@ -41,6 +46,31 @@ page.on('pageerror', (e) => console.error('page error:', e.message));
 page.on('console', (m) => {
   if (m.text().startsWith('[bench]') || m.type() === 'error') console.error(m.text());
 });
+if ('photos' in args) {
+  const pq = new URLSearchParams({
+    segmenter: args.segmenter ?? 'simple',
+    models: args.models ?? 'clip,siglip',
+    ...(args.kinds ? { kinds: args.kinds } : {}),
+  });
+  await page.goto(`http://localhost:${port}/grainforge/bench-photos.html?${pq}`);
+  await page.waitForFunction(() => window.photoBench?.done, null, { timeout: 60 * 60_000 });
+  const r = await page.evaluate(() => window.photoBench);
+  if (args.json) await writeFile(args.json, JSON.stringify(r, null, 2));
+  await browser.close();
+  server.close();
+  if (r.error) (console.error(r.error), process.exit(1));
+  console.log(`Listings: ${r.listings.length}, photos: ${r.listings.reduce((n, l) => n + l.photos.length, 0)}`);
+  console.log('Method                     listing right first / top 3   photo right first');
+  for (const s of r.scores) console.log(`  ${s.method.padEnd(24)} ${String(s.listingFirst).padStart(5)}% / ${String(s.listingTop3).padStart(5)}%        ${s.photoFirst}%`);
+  const kinds = Object.keys(r.scores[0].byKind);
+  console.log('\nRight first by kind (listing level):');
+  console.log(`  ${'method'.padEnd(24)} ${kinds.map((k) => k.slice(0, 8).padStart(8)).join(' ')}`);
+  for (const s of r.scores.filter((s) => !s.method.includes('@') || s.method.endsWith('@1'))) console.log(`  ${s.method.padEnd(24)} ${kinds.map((k) => String(s.byKind[k]).padStart(8)).join(' ')}`);
+  console.log('\nCommonest mistakes:');
+  for (const [m, list] of Object.entries(r.confusions)) console.log(`  ${m}: ${list.map(([c, n]) => `${c} ×${n}`).join(', ') || 'none'}`);
+  if (r.errors.length) console.log('\nModel errors:\n  ' + r.errors.join('\n  '));
+  process.exit(0);
+}
 const q = new URLSearchParams({
   autorun: '1',
   segmenter: args.segmenter ?? 'simple',

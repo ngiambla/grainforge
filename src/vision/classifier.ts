@@ -2,7 +2,7 @@
 // the outline cues.
 
 import type { FurnitureKind } from './analysis';
-import type { ClassifierRequest, ClassifierResponse } from './classifier-worker';
+import type { ClassifierRequest, ClassifierResponse, ClassifyModel } from './classifier-worker';
 import { kindProbabilities } from './kinds-labels';
 import { failAll, waitFor, watchWorker, type Waiter } from './worker-guard';
 
@@ -18,7 +18,7 @@ export class WorkerClassifier implements Classifier {
   private waiting = new Map<string, Waiter<KindScores>>();
   private ready = false;
 
-  constructor(private onStatus: (text: string) => void = () => {}) {}
+  constructor(private onStatus: (text: string) => void = () => {}, private model: ClassifyModel = 'clip') {}
 
   private get w() {
     if (!this.worker) {
@@ -62,7 +62,7 @@ export class WorkerClassifier implements Classifier {
   classify(key: string, image: Blob): Promise<KindScores> {
     const w = this.w;
     const answer = waitFor(this.waiting, key, 'Recognition model', () => this.ready);
-    w.postMessage({ type: 'classify', key, image } satisfies ClassifierRequest);
+    w.postMessage({ type: 'classify', key, image, model: this.model } satisfies ClassifierRequest);
     return answer;
   }
 }

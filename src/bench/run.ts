@@ -83,7 +83,7 @@ export function clickPoint(img: ImageData): { x: number; y: number } {
   return { x: best.x / w, y: best.y / h };
 }
 
-async function imageData(blob: Blob): Promise<ImageData> {
+export async function imageData(blob: Blob): Promise<ImageData> {
   const bmp = await createImageBitmap(blob);
   const c = new OffscreenCanvas(bmp.width, bmp.height);
   const ctx = c.getContext('2d')!;
