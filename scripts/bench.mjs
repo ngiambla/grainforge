@@ -7,7 +7,8 @@
 //   npm run bench -- --segmenter=sam    (the real model; needs network for the first download)
 //   npm run bench -- --classifier=siglip (recognise the kind with SigLIP, or =clip; needs network the first time)
 //   npm run bench -- --photos           (real catalog photos: run node scripts/abo-select.mjs first;
-//                                        --models=clip,siglip  --segmenter=sam  --kinds=chair,table  --florence)
+//                                        --models=clip,siglip  --segmenter=sam  --kinds=chair,table  --florence
+//                                        --timeout=240 (minutes))
 import { createServer } from 'node:http';
 import { readFile, writeFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
@@ -54,7 +55,8 @@ if ('photos' in args) {
     ...('florence' in args ? { florence: '1' } : {}),
   });
   await page.goto(`http://localhost:${port}/grainforge/bench-photos.html?${pq}`);
-  await page.waitForFunction(() => window.photoBench?.done, null, { timeout: 60 * 60_000 });
+  // Florence-2 and SAM on WebAssembly take over an hour for the full set.
+  await page.waitForFunction(() => window.photoBench?.done, null, { timeout: Number(args.timeout ?? 240) * 60_000 });
   const r = await page.evaluate(() => window.photoBench);
   if (args.json) await writeFile(args.json, JSON.stringify(r, null, 2));
   await browser.close();
