@@ -1,5 +1,6 @@
 import '../style.css';
 import type { Mask } from '../vision/analysis';
+import { WorkerClassifier } from '../vision/classifier';
 import { WorkerSegmenter, type Segmenter } from '../vision/segmenter';
 import { KIND_LABEL } from '../vision/templates';
 import { ThresholdSegmenter } from '../vision/threshold';
@@ -26,6 +27,9 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEl
 const params = new URLSearchParams(location.search);
 const segSel = $('seg') as HTMLSelectElement;
 segSel.value = params.get('segmenter') === 'sam' ? 'sam' : 'simple';
+const clipBox = $('clip') as HTMLInputElement;
+clipBox.checked = !!params.get('classifier') && params.get('classifier') !== 'off';
+const classifyModel = params.get('classifier') === 'clip' ? 'clip' : 'siglip';
 const status = $('status');
 
 async function thumb(image: Blob, mask: Mask | null): Promise<HTMLCanvasElement> {
@@ -111,6 +115,7 @@ function renderSummary(sum: ReturnType<typeof summarize>) {
     stat(`${sum.dimError}%`, 'average size error, read from photos'),
     stat(`${sum.within10}%`, 'of sizes within 10%'),
     stat(`${sum.paramError}%`, 'average error on legs, seats, rails'),
+    ...(sum.modelFailures ? [stat(`${sum.modelFailures}`, `photos where a model failed: ${sum.modelErrors.join('; ')}`)] : []),
   );
 }
 
@@ -121,11 +126,13 @@ async function run() {
   $('results').replaceChildren();
   const segmenter: Segmenter = segSel.value === 'sam' ? new WorkerSegmenter((t) => (status.textContent = t)) : new ThresholdSegmenter();
   const studio = new Studio();
+  const classifier = clipBox.checked ? new WorkerClassifier((t) => (status.textContent = t), classifyModel) : undefined;
   const results: CaseResult[] = [];
   const only = params.get('case');
   for (const c of CASES.filter((x) => !only || x.id === only)) {
     status.textContent = `Testing ${c.label} (${results.length + 1} of ${CASES.length})…`;
-    const r = await runCase(c, studio, segmenter);
+    console.log(`[bench] ${c.id} starting`);
+    const r = await runCase(c, studio, segmenter, classifier);
     results.push(r);
     $('results').append(await renderCase(r));
     renderSummary(summarize(results));
@@ -136,7 +143,7 @@ async function run() {
   window.bench = {
     done: true,
     summary,
-    results: results.map((r) => ({ id: r.case.id, label: r.case.label, kind: r.case.truth.kind, views: r.shots.map((s) => ({ view: s.view, autoAngled: s.autoAngled, outlined: !!s.silhouette })), sets: r.sets })),
+    results: results.map((r) => ({ id: r.case.id, label: r.case.label, kind: r.case.truth.kind, views: r.shots.map((s) => ({ view: s.view, autoAngled: s.autoAngled, outlined: !!s.silhouette, kindScores: s.kindScores, errors: s.errors })), sets: r.sets })),
   };
 }
 

@@ -3,6 +3,7 @@
 // leave the device.
 
 import { AutoProcessor, RawImage, SamModel, Tensor, env } from '@huggingface/transformers';
+import { webgpuAvailable } from './gpu';
 
 export const SEGMENT_MODEL = 'Xenova/slimsam-77-uniform';
 // Model revision. Replace 'main' with a commit hash once benchmarked, so an
@@ -37,7 +38,7 @@ const post = (msg: WorkerResponse, transfer: Transferable[] = []) =>
 
 function load() {
   loading ??= (async () => {
-    const device = 'gpu' in navigator ? 'webgpu' : 'wasm';
+    const device = (await webgpuAvailable()) ? 'webgpu' : 'wasm';
     const progress_callback = (p: { status: string; file?: string; loaded?: number; total?: number }) => {
       if (p.status === 'progress' && p.file) post({ type: 'progress', file: p.file, loaded: p.loaded ?? 0, total: p.total ?? 0 });
     };

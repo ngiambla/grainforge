@@ -6,6 +6,7 @@ import { formatLength, parseLength, type UnitSystem } from '../format';
 import { analyzeMask, looksAngled, type FurnitureKind, type Mask, type Silhouette } from '../vision/analysis';
 import { fitFromPhotos, suggestFromViews } from '../vision/fit';
 import { dimsOf, type Dim, type KnownMeasure, type View } from '../vision/fuse';
+import { combineKinds, WorkerClassifier, type Classifier, type KindScores } from '../vision/classifier';
 import { boxMask, WorkerSegmenter, type Point, type Segmenter } from '../vision/segmenter';
 import { buildFromFit, KIND_LABEL, TABLE_FAMILY } from '../vision/templates';
 import { ThresholdSegmenter } from '../vision/threshold';
@@ -29,6 +30,8 @@ interface PhotoState {
   status: HTMLElement;
   viewSel: HTMLSelectElement;
   viewTouched: boolean;
+  /** What the recognition model thinks the photo shows. */
+  kindScores: KindScores | null;
 }
 
 const VIEWS: [View, string][] = [
@@ -42,6 +45,8 @@ const VIEWS: [View, string][] = [
 
 let segmenter: Segmenter | null = null;
 let modelFailed = false;
+let classifier: Classifier | null = null;
+let classifierFailed = false;
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> & { class?: string } = {}, ...children: (Node | string)[]) {
   const e = document.createElement(tag);
@@ -77,6 +82,12 @@ export function openPhotoWizard(units: UnitSystem, onCreate: (p: Project) => voi
   const status = el('p', { class: 'wizard-status', ariaLive: 'polite' });
   const setStatus = (t: string) => (status.textContent = t);
   segmenter ??= params.get('segmenter') === 'simple' ? new ThresholdSegmenter() : new WorkerSegmenter(setStatus);
+  // SigLIP recognises the kind: on real catalog photos it was right first for
+  // 86% of listings, against 64% for CLIP and 17% for the outline rules.
+  // ?classifier=clip picks CLIP, ?classifier=off the outline rules alone.
+  const choice = params.get('classifier');
+  if (choice === 'off') classifierFailed = true;
+  classifier ??= new WorkerClassifier(setStatus, choice === 'clip' ? 'clip' : 'siglip');
 
   const photos: PhotoState[] = [];
   let counter = 0;
@@ -134,6 +145,7 @@ export function openPhotoWizard(units: UnitSystem, onCreate: (p: Project) => voi
   apronsSel.append(el('option', { value: 'auto', textContent: 'auto' }), el('option', { value: 'yes', textContent: 'yes' }), el('option', { value: 'no', textContent: 'no' }));
   const tableOpts = el('span', { class: 'case-opts' }, el('label', {}, 'Aprons under the top ', apronsSel));
   const kindSel = el('select', { ariaLabel: 'Kind of furniture' });
+  const kindHint = el('span', { class: 'hint kind-hint' });
   for (const k of Object.keys(KIND_LABEL) as FurnitureKind[]) kindSel.append(el('option', { value: k, textContent: KIND_LABEL[k] }));
   let kindTouched = false;
   kindSel.addEventListener('change', () => {
@@ -172,7 +184,7 @@ export function openPhotoWizard(units: UnitSystem, onCreate: (p: Project) => voi
       { class: 'wizard-form' },
       measureList,
       el('div', {}, addMeasureBtn),
-      el('div', { class: 'form-row' }, el('span', { textContent: "It's a" }), kindSel, caseOpts, tableOpts),
+      el('div', { class: 'form-row' }, el('span', { textContent: "It's a" }), kindSel, caseOpts, tableOpts, kindHint),
       errorBox,
     ),
     el('div', { class: 'wizard-actions' }, el('span', { class: 'hint', textContent: 'This replaces the current project. Save it first if you want to keep it.' }), cancelBtn, createBtn),
@@ -192,9 +204,17 @@ export function openPhotoWizard(units: UnitSystem, onCreate: (p: Project) => voi
       m.dimSel.replaceChildren(...dims.map((d) => el('option', { value: d, textContent: d })));
       if (dims.includes(prevDim as Dim)) m.dimSel.value = prevDim;
     }
-    // Suggest a kind from all outlined photos together.
+    // Suggest a kind: the recognition model's view of each photo, with the
+    // outlines' shape and proportions as a tie-breaker (or alone, if the model can't run).
     const outlined = photos.filter((p) => p.silhouette).map((p) => ({ view: p.view, silhouette: p.silhouette! }));
-    if (outlined.length && !kindTouched) kindSel.value = suggestFromViews(outlined)[0]!;
+    const scores = photos.map((p) => p.kindScores).filter((s): s is KindScores => !!s);
+    if (outlined.length || scores.length) {
+      const ranked = combineKinds(scores, outlined.length ? suggestFromViews(outlined) : []);
+      if (!kindTouched) kindSel.value = ranked[0]!.kind;
+      kindHint.textContent = scores.length
+        ? `Looks most like: ${ranked.slice(0, 3).map((r) => `${KIND_LABEL[r.kind].toLowerCase()} ${Math.round(r.score * 100)}%`).join(', ')}`
+        : '';
+    }
     syncKind();
   }
 
@@ -308,11 +328,23 @@ export function openPhotoWizard(units: UnitSystem, onCreate: (p: Project) => voi
         el('div', { class: 'photo-tools' }, modeBtn, clearBtn, removeBtn),
       );
       grid.append(card);
-      const p: PhotoState = { id, view, ...prep, points: [], mask: null, silhouette: null, mode: modelFailed ? 'box' : 'click', embedded: null, canvas, status, viewSel, viewTouched: false };
+      const p: PhotoState = { id, view, ...prep, points: [], mask: null, silhouette: null, mode: modelFailed ? 'box' : 'click', embedded: null, canvas, status, viewSel, viewTouched: false, kindScores: null };
       photos.push(p);
       draw(p);
       if (modelFailed) useBoxMode(p);
       describe(p);
+      // Recognise what the photo shows, in the background.
+      if (!classifierFailed) {
+        classifier!.classify(p.id, p.blob).then(
+          (s) => {
+            p.kindScores = s;
+            refreshForm();
+          },
+          () => {
+            classifierFailed = true; // fall back to the outline cues
+          },
+        );
+      }
       // Start encoding straight away so the first click is quick.
       if (p.mode === 'click') p.embedded = segmenter!.embed(p.id, p.blob).catch((err) => {
         p.embedded = null;

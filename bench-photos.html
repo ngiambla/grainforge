@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <title>GrainForge real-photo bench</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪵</text></svg>" />
+  </head>
+  <body class="bench">
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">🪵</span>
+        <span class="brand-name">GrainForge</span>
+      </div>
+      <span class="bench-title">Real-photo bench</span>
+      <div class="top-actions">
+        <a class="ghost-link" href="./bench.html">Rendered-photo bench</a>
+      </div>
+    </header>
+    <main class="bench-main">
+      <section class="card">
+        <h2>Which kind of piece is in the photo?</h2>
+        <p class="hint">
+          Scores the outline rules, CLIP and SigLIP on real catalog photos. Run <code>node scripts/abo-select.mjs</code>
+          first to fetch the photos, then <code>npm run bench -- --photos</code>.
+        </p>
+        <span id="status" class="hint"></span>
+        <div id="summary" class="bench-summary"></div>
+      </section>
+    </main>
+    <script type="module" src="/src/bench/photos.ts"></script>
+  </body>
+</html>
