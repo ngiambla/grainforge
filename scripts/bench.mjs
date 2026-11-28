@@ -7,7 +7,7 @@
 //   npm run bench -- --segmenter=sam    (the real model; needs network for the first download)
 //   npm run bench -- --classifier=siglip (recognise the kind with SigLIP, or =clip; needs network the first time)
 //   npm run bench -- --photos           (real catalog photos: run node scripts/abo-select.mjs first;
-//                                        --models=clip,siglip  --segmenter=sam  --kinds=chair,table  --florence
+//                                        --models=clip,siglip  --segmenter=sam  --kinds=chair,table
 //                                        --timeout=240 (minutes))
 import { createServer } from 'node:http';
 import { readFile, writeFile } from 'node:fs/promises';
@@ -52,10 +52,9 @@ if ('photos' in args) {
     segmenter: args.segmenter ?? 'simple',
     models: args.models ?? 'clip,siglip',
     ...(args.kinds ? { kinds: args.kinds } : {}),
-    ...('florence' in args ? { florence: '1' } : {}),
   });
   await page.goto(`http://localhost:${port}/grainforge/bench-photos.html?${pq}`);
-  // Florence-2 and SAM on WebAssembly take over an hour for the full set.
+  // SAM on WebAssembly can take most of an hour for the full set.
   await page.waitForFunction(() => window.photoBench?.done, null, { timeout: Number(args.timeout ?? 240) * 60_000 });
   const r = await page.evaluate(() => window.photoBench);
   if (args.json) await writeFile(args.json, JSON.stringify(r, null, 2));
@@ -71,11 +70,6 @@ if ('photos' in args) {
   for (const s of r.scores.filter((s) => !s.method.includes('@') || s.method.endsWith('@1'))) console.log(`  ${s.method.padEnd(24)} ${kinds.map((k) => String(s.byKind[k]).padStart(8)).join(' ')}`);
   console.log('\nCommonest mistakes:');
   for (const [m, list] of Object.entries(r.confusions)) console.log(`  ${m}: ${list.map(([c, n]) => `${c} ×${n}`).join(', ') || 'none'}`);
-  if (r.florence) {
-    const f = r.florence;
-    console.log(`\nFlorence-2: found the piece in ${f.found} of ${f.photos} main photos`);
-    for (const [part, c] of Object.entries(f.counts)) console.log(`  ${part}: ${c.exact}/${c.listings} exact, ${c.withinOne}/${c.listings} within one (listed→counted: ${c.examples.join(', ')})`);
-  }
   if (r.errors.length) console.log('\nModel errors:\n  ' + r.errors.join('\n  '));
   process.exit(0);
 }

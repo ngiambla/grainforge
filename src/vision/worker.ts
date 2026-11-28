@@ -4,7 +4,6 @@
 
 import { AutoProcessor, RawImage, SamModel, Tensor, env } from '@huggingface/transformers';
 import { webgpuAvailable } from './gpu';
-import { boxIoU, clipToBox, maskBox } from './boxes';
 
 export const SEGMENT_MODEL = 'Xenova/slimsam-77-uniform';
 // Model revision. Replace 'main' with a commit hash once benchmarked, so an
@@ -16,13 +15,7 @@ env.allowLocalModels = false;
 export type WorkerRequest =
   | { type: 'load' }
   | { type: 'embed'; key: string; image: Blob }
-  | {
-      type: 'segment';
-      key: string;
-      points: { x: number; y: number; positive: boolean }[];
-      /** Where the whole piece is (0..1 across the image), when a detector found it. */
-      box?: { x0: number; y0: number; x1: number; y1: number };
-    };
+  | { type: 'segment'; key: string; points: { x: number; y: number; positive: boolean }[] };
 
 export type WorkerResponse =
   | { type: 'progress'; file: string; loaded: number; total: number }
@@ -99,19 +92,10 @@ self.addEventListener('message', async (e: MessageEvent<WorkerRequest>) => {
       const m = masks[0]!;
       const [, n, mh, mw] = m.dims as [number, number, number, number];
       const scores = out.iou_scores.data as Float32Array;
-      const size = mh * mw;
-      const all = m.data as Uint8Array;
       let best = 0;
-      if (req.box) {
-        // SAM offers a part, a larger part and the whole; keep the one whose
-        // extent matches the detected piece, then trim what spills past it.
-        const fit = (i: number) => boxIoU(maskBox(all.subarray(i * size, (i + 1) * size), mw, mh), req.box!);
-        for (let i = 1; i < n; i++) if (fit(i) > fit(best)) best = i;
-      } else {
-        for (let i = 1; i < n; i++) if (scores[i]! > scores[best]!) best = i;
-      }
-      const data = new Uint8Array(all.subarray(best * size, (best + 1) * size));
-      if (req.box) clipToBox(data, mw, mh, req.box, 0.03);
+      for (let i = 1; i < n; i++) if (scores[i]! > scores[best]!) best = i;
+      const size = mh * mw;
+      const data = new Uint8Array((m.data as Uint8Array).subarray(best * size, (best + 1) * size));
       post({ type: 'mask', key: req.key, width: mw, height: mh, data, score: scores[best]! }, [data.buffer]);
     }
   } catch (err) {

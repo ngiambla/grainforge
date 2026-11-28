@@ -56,10 +56,7 @@ The site deploys to GitHub Pages from `main` via `.github/workflows/pages.yml`.
 4. GrainForge suggests the kind of furniture, and you confirm it. SigLIP
    (Apache-2.0, also in a Web Worker, downloaded once) recognises it from the
    photos; the outlines (open legs or a solid case, openings, proportions)
-   break near-ties and take over if the model can't run.
-   [Florence-2](https://huggingface.co/onnx-community/Florence-2-base-ft) (MIT)
-   then finds the piece in each photo you haven't clicked yet and outlines it
-   for you; click to adjust (`?florence=off` turns this off). Kinds: table, bench, stool, bookcase,
+   break near-ties and take over if the model can't run. Kinds: table, bench, stool, bookcase,
    cabinet, chair, bed frame, picture frame, wall peg rack and wooden utensil.
    It then fits a parametric template:
    - tables, benches and stools: leg thickness, top thickness, apron height and
@@ -109,7 +106,6 @@ node scripts/abo-select.mjs            # 20 listings per kind, ~530 photos, into
 npm run build
 npm run bench -- --photos              # outline rules, CLIP and SigLIP
 npm run bench -- --photos --segmenter=sam --models=siglip
-npm run bench -- --photos --florence    # also find the piece and count shelves, doors, hooks
 ```
 
 Results, November 2026 (180 listings, 529 photos, 9 kinds; ABO has almost no

@@ -5,16 +5,12 @@ import type { WorkerRequest, WorkerResponse } from './worker';
 import { REQUEST_TIMEOUT_MS, watchWorker } from './worker-guard';
 
 export type Point = { x: number; y: number; positive: boolean };
-export type Box = { x0: number; y0: number; x1: number; y1: number };
 
 export interface Segmenter {
   /** Prepare an image (runs the image encoder once). */
   embed(key: string, image: Blob): Promise<void>;
-  /**
-   * Mask for the given points; x and y are 0..1 across the image. With a box
-   * (where a detector found the piece), the mask that best fills it wins.
-   */
-  segment(key: string, points: Point[], box?: Box): Promise<Mask>;
+  /** Mask for the given points; x and y are 0..1 across the image. */
+  segment(key: string, points: Point[]): Promise<Mask>;
 }
 
 export class WorkerSegmenter implements Segmenter {
@@ -85,8 +81,8 @@ export class WorkerSegmenter implements Segmenter {
     await this.request({ type: 'embed', key, image }, 'embedded');
   }
 
-  async segment(key: string, points: Point[], box?: Box): Promise<Mask> {
-    const r = await this.request({ type: 'segment', key, points, box }, 'mask');
+  async segment(key: string, points: Point[]): Promise<Mask> {
+    const r = await this.request({ type: 'segment', key, points }, 'mask');
     return { width: r.width, height: r.height, data: r.data };
   }
 }

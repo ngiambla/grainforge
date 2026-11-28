@@ -3,8 +3,7 @@
 // Used for automated tests (?segmenter=simple) and plain studio-style photos.
 
 import type { Mask } from './analysis';
-import type { Box, Point, Segmenter } from './segmenter';
-import { clipToBox } from './boxes';
+import type { Point, Segmenter } from './segmenter';
 
 export class ThresholdSegmenter implements Segmenter {
   private images = new Map<string, ImageData>();
@@ -17,7 +16,7 @@ export class ThresholdSegmenter implements Segmenter {
     this.images.set(key, ctx.getImageData(0, 0, bmp.width, bmp.height));
   }
 
-  async segment(key: string, points: Point[], box?: Box): Promise<Mask> {
+  async segment(key: string, points: Point[]): Promise<Mask> {
     const img = this.images.get(key);
     if (!img) throw new Error('Image not prepared yet.');
     const { width: w, height: h, data } = img;
@@ -49,7 +48,6 @@ export class ThresholdSegmenter implements Segmenter {
         }
       }
     }
-    if (box) clipToBox(out, w, h, box, 0.03);
     return { width: w, height: h, data: out };
   }
 }
